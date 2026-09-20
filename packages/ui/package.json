@@ -1,0 +1,29 @@
+{
+  "name": "@career-launch/ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./tokens.css": "./src/tokens.css",
+    "./base.css": "./src/base.css"
+  },
+  "scripts": {
+    "test": "vitest run --environment jsdom",
+    "typecheck": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "latest",
+    "element-plus": "latest",
+    "vue": "latest"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "latest",
+    "@vue/test-utils": "latest",
+    "jsdom": "latest",
+    "typescript": "5.9.3",
+    "vite": "latest",
+    "vitest": "latest",
+    "vue-tsc": "latest"
+  }
+}
