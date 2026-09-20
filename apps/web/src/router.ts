@@ -1,4 +1,3 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import PublicLayout from './layouts/PublicLayout.vue'
-import ShellWelcome from './views/ShellWelcome.vue'
-export const router = createRouter({ history: createWebHistory(), scrollBehavior:()=>({top:0}), routes:[{path:'/',component:PublicLayout,children:[{path:'',name:'home',component:ShellWelcome}]}] })
+export const router = createRouter({ history: createWebHistory(), scrollBehavior:()=>({top:0}), routes:[{path:'/',component:PublicLayout,children:[{path:'',name:'home',component:()=>import('./features/home/HomePage.vue')},{path:'jobs',name:'jobs',component:()=>import('./views/ShellWelcome.vue')},{path:'companies',name:'companies',component:()=>import('./views/ShellWelcome.vue')},{path:'knowledge',name:'knowledge',component:()=>import('./views/ShellWelcome.vue')},{path:'me/resumes',component:()=>import('./views/ShellWelcome.vue')},{path:'me/applications',component:()=>import('./views/ShellWelcome.vue')}]}] })
