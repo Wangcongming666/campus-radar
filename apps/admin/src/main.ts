@@ -1,5 +1,6 @@
 import '@career-launch/ui/base.css'
 import 'element-plus/dist/index.css'
+import './admin.css'
 import ElementPlus from 'element-plus'
 import { createPinia } from 'pinia'
 import { createApp } from 'vue'
