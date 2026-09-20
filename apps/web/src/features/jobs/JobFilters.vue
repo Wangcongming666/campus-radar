@@ -1,0 +1,11 @@
+<script setup lang="ts">
+import type {JobQuery} from '@career-launch/shared'
+const props=defineProps<{modelValue:JobQuery}>();const emit=defineEmits<{ 'update:modelValue':[value:JobQuery] }>()
+const cities=['北京','上海','杭州','深圳','广州','南京','苏州','成都','武汉'];const categories=['技术','产品','数据'];const education=['本科','硕士','博士']
+function toggle(key:'city'|'category'|'education',value:string){const current=props.modelValue[key];emit('update:modelValue',{...props.modelValue,[key]:current.includes(value)?current.filter(item=>item!==value):[...current,value],page:1})}
+function reset(){emit('update:modelValue',{city:[],category:[],education:[],sort:'latest',page:1,pageSize:12})}
+</script>
+<template><aside class="filters cl-card"><header><strong>筛选职位</strong><button type="button" data-action="reset" @click="reset">清空</button></header><fieldset><legend>工作城市</legend><div><button v-for="item in cities" :key="item" type="button" :aria-pressed="modelValue.city.includes(item)" @click="toggle('city',item)">{{item}}</button></div></fieldset><fieldset><legend>岗位类别</legend><div><button v-for="item in categories" :key="item" type="button" :aria-pressed="modelValue.category.includes(item)" @click="toggle('category',item)">{{item}}</button></div></fieldset><fieldset><legend>学历要求</legend><div><button v-for="item in education" :key="item" type="button" :aria-pressed="modelValue.education.includes(item)" @click="toggle('education',item)">{{item}}</button></div></fieldset></aside></template>
+<style scoped>
+.filters{padding:20px;align-self:start}header{display:flex;justify-content:space-between;margin-bottom:22px}header button{border:0;color:var(--cl-primary);background:none;font-size:13px}fieldset{margin:0;padding:17px 0;border:0;border-top:1px solid var(--cl-border)}legend{margin-bottom:11px;color:var(--cl-text-strong);font-size:13px;font-weight:700}fieldset div{display:flex;flex-wrap:wrap;gap:7px}fieldset button{min-height:30px;padding:3px 9px;border:0;border-radius:6px;color:var(--cl-muted);background:transparent;font-size:12px}fieldset button[aria-pressed=true]{color:var(--cl-primary);background:var(--cl-primary-soft);font-weight:700}@media(max-width:840px){.filters{position:static}fieldset{display:inline-block;width:100%}}
+</style>
