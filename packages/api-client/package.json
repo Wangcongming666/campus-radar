@@ -1,0 +1,22 @@
+{
+  "name": "@career-launch/api-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@career-launch/shared": "workspace:*",
+    "dexie": "latest"
+  },
+  "devDependencies": {
+    "fake-indexeddb": "latest",
+    "typescript": "latest",
+    "vitest": "latest"
+  }
+}
