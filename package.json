@@ -4,6 +4,8 @@
   "private": true,
   "packageManager": "pnpm@11.19.0",
   "scripts": {
+    "dev:web": "pnpm --filter @career-launch/web dev",
+    "dev:admin": "pnpm --filter @career-launch/admin dev",
     "test": "pnpm -r --if-present test",
     "typecheck": "pnpm -r --if-present typecheck",
     "build": "pnpm -r --if-present build"

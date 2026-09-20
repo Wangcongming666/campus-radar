@@ -13,8 +13,6 @@
     "typecheck": "vue-tsc --noEmit"
   },
   "dependencies": {
-    "@element-plus/icons-vue": "latest",
-    "element-plus": "latest",
     "vue": "latest"
   },
   "devDependencies": {
