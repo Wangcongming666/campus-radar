@@ -21,6 +21,7 @@ import { articles as seedArticles, companies as seedCompanies, jobs as seedJobs,
 export interface MockRepositoryOptions {
   storage?: 'memory' | 'indexeddb'
   latencyMs?: number
+  includeDemoApplications?: boolean
 }
 
 interface State {
@@ -41,14 +42,20 @@ function clone<T>(value: T): T {
   return structuredClone(value)
 }
 
-function initialState(): State {
+function initialState(includeDemoApplications = false): State {
+  const demoStages: ApplicationStage[] = ['pending_confirmation', 'applied', 'written_test', 'interview', 'offer', 'rejected']
+  const demoApplications: Application[] = includeDemoApplications ? seedJobs.slice(0, 6).map((job, index) => {
+    const stage = demoStages[index] ?? 'applied'
+    const occurredAt = new Date(Date.UTC(2026, 8, 14 + index)).toISOString()
+    return { id: `application-${String(index + 1).padStart(3, '0')}`, userId: student.id, jobId: job.id, jobTitle: job.title, companyName: job.companyName, companyLogoText: job.companyLogoText, city: job.city, deadlineAt: job.deadlineAt, stage, ...(stage === 'pending_confirmation' ? {} : { appliedAt: occurredAt }), note: index === 3 ? '准备系统设计与项目复盘' : '', archived: false, events: [{ id: `application-event-${index + 1}`, toStage: stage, occurredAt }], reminders: [], updatedAt: occurredAt }
+  }) : []
   return clone({
     companies: seedCompanies,
     jobs: seedJobs,
     seasons: seedSeasons,
     articles: seedArticles,
     questions: seedQuestions,
-    applications: [],
+    applications: demoApplications,
     resumes: seedResumes,
     notifications: seedNotifications,
     users: [student],
@@ -68,9 +75,9 @@ function includesKeyword(values: string[], keyword?: string): boolean {
   return values.some((value) => value.toLocaleLowerCase('zh-CN').includes(normalized))
 }
 
-function createStateStore(storage: MockRepositoryOptions['storage']) {
+function createStateStore(storage: MockRepositoryOptions['storage'], includeDemoApplications: boolean) {
   const key = 'career-launch-mock-v1'
-  let memory = initialState()
+  let memory = initialState(includeDemoApplications)
 
   if (storage === 'indexeddb' && typeof localStorage !== 'undefined') {
     const saved = localStorage.getItem(key)
@@ -83,7 +90,7 @@ function createStateStore(storage: MockRepositoryOptions['storage']) {
       if (storage === 'indexeddb' && typeof localStorage !== 'undefined') localStorage.setItem(key, JSON.stringify(memory))
     },
     reset: () => {
-      memory = initialState()
+      memory = initialState(includeDemoApplications)
       if (storage === 'indexeddb' && typeof localStorage !== 'undefined') localStorage.setItem(key, JSON.stringify(memory))
     },
   }
@@ -91,7 +98,8 @@ function createStateStore(storage: MockRepositoryOptions['storage']) {
 
 export function createMockRepository(options: MockRepositoryOptions = {}): CareerRepository {
   const latencyMs = options.latencyMs ?? 180
-  const store = createStateStore(options.storage ?? 'indexeddb')
+  const storage = options.storage ?? 'indexeddb'
+  const store = createStateStore(storage, options.includeDemoApplications ?? storage !== 'memory')
   const delay = async () => {
     if (latencyMs > 0) await new Promise((resolve) => setTimeout(resolve, latencyMs))
   }
