@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatDeadline, parseJobQuery, serializeJobQuery } from './format'
+import { daysUntil, formatDeadline, formatDeadlineStatus, parseJobQuery, serializeJobQuery, shanghaiDateKey } from './format'
 
 describe('formatDeadline', () => {
   it('uses Shanghai calendar days for a future deadline', () => {
@@ -31,5 +31,28 @@ describe('job query URL conversion', () => {
     const output = serializeJobQuery({ city: [], category: [], education: [], sort: 'deadline', page: 1, pageSize: 12 })
 
     expect(output.toString()).toBe('sort=deadline')
+  })
+})
+
+describe('deadline status helpers', () => {
+  const now = new Date('2026-10-01T04:00:00.000Z')
+
+  it.each([
+    ['2026-10-01T15:59:59.000Z', 0, '今天截止', 'danger'],
+    ['2026-10-02T15:59:59.000Z', 1, '1 天后截止', 'warning'],
+    ['2026-10-04T15:59:59.000Z', 3, '3 天后截止', 'warning'],
+    ['2026-10-06T15:59:59.000Z', 5, '5 天后截止', 'primary'],
+    ['2026-09-29T15:59:59.000Z', -2, '已过期 2 天', 'danger'],
+  ] as const)('formatDeadlineStatus(%s)', (value, days, label, tone) => {
+    expect(formatDeadlineStatus(value, now)).toEqual({ days, label, tone })
+  })
+
+  it('daysUntil is negative for past values', () => {
+    expect(daysUntil('2026-09-30T00:00:00.000Z', now)).toBeLessThan(0)
+  })
+
+  it('maps ISO values onto Shanghai calendar dates', () => {
+    expect(shanghaiDateKey('2026-10-01T17:30:00.000Z')).toBe('2026-10-02')
+    expect(shanghaiDateKey('2026-10-01T02:30:00.000Z')).toBe('2026-10-01')
   })
 })

@@ -15,6 +15,28 @@ export function formatDeadline(value: string, now = new Date()): string {
   return `${remaining}天后截止`
 }
 
+export function daysUntil(value: string, now = new Date()): number {
+  return shanghaiDay(new Date(value)) - shanghaiDay(now)
+}
+
+export interface DeadlineStatus {
+  days: number
+  label: string
+  tone: 'danger' | 'warning' | 'primary' | 'neutral'
+}
+
+export function formatDeadlineStatus(value: string, now = new Date()): DeadlineStatus {
+  const days = daysUntil(value, now)
+  if (days < 0) return { days, label: `已过期 ${-days} 天`, tone: 'danger' }
+  if (days <= 3) return { days, label: days === 0 ? '今天截止' : `${days} 天后截止`, tone: 'danger' }
+  if (days <= 7) return { days, label: `${days} 天后截止`, tone: 'warning' }
+  return { days, label: `${days} 天后截止`, tone: 'primary' }
+}
+
+export function shanghaiDateKey(value: string): string {
+  return new Date(Date.parse(value) + SHANGHAI_OFFSET_MS).toISOString().slice(0, 10)
+}
+
 function positiveInteger(value: string | null, fallback: number): number {
   const parsed = Number.parseInt(value ?? '', 10)
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
