@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { AppLogo } from '@career-launch/ui'
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import LoginDialog from '../features/auth/LoginDialog.vue'
 import { useSessionStore } from '../stores/session'
@@ -25,6 +25,11 @@ function closeAccount() {
   accountOpen.value = false
   confirmLogout.value = false
 }
+
+watch(() => route.fullPath, () => {
+  menuOpen.value = false
+  closeAccount()
+})
 
 function onDocumentClick(event: MouseEvent) {
   if (accountOpen.value && headerRef.value && !headerRef.value.contains(event.target as Node)) closeAccount()

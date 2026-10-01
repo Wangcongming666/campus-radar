@@ -63,6 +63,30 @@ describe('PublicLayout dual-mode header', () => {
     expect(wrapper.text()).not.toContain('林同学')
   })
 
+  it('closes the account menu when the route changes', async () => {
+    sessionState.user = { nickname: '林同学' }
+    const wrapper = await mountAt('/jobs')
+
+    await wrapper.get('.avatar-button').trigger('click')
+    expect(wrapper.find('.account-menu').exists()).toBe(true)
+
+    await router.push('/')
+    await flushPromises()
+    expect(wrapper.find('.account-menu').exists()).toBe(false)
+  })
+
+  it('closes the account menu on Escape', async () => {
+    sessionState.user = { nickname: '林同学' }
+    const wrapper = await mountAt('/jobs')
+
+    await wrapper.get('.avatar-button').trigger('click')
+    expect(wrapper.find('.account-menu').exists()).toBe(true)
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await flushPromises()
+    expect(wrapper.find('.account-menu').exists()).toBe(false)
+  })
+
   it('confirms sign-out inside the avatar menu before logging out', async () => {
     sessionState.user = { nickname: '林同学' }
     sessionState.logout.mockClear()
