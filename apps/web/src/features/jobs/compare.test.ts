@@ -1,7 +1,15 @@
-import type { Job } from '@career-launch/shared'
+import type { Company, Job } from '@career-launch/shared'
 import { describe, expect, it } from 'vitest'
 
 import { MAX_COMPARE, buildCompareRows } from './compare'
+
+function company(id: string, partial: Partial<Company>): Company {
+  return {
+    id, name: '占位公司', shortName: '占位', logoText: '占', industry: '互联网', scale: '1000-9999 人', ownership: '民营',
+    cities: ['上海'], summary: '', description: '', websiteUrl: 'https://example.com', careersUrl: 'https://example.com',
+    status: 'active', featured: false, ...partial,
+  }
+}
 
 function job(partial: Partial<Job> & { id: string }): Job {
   return {
@@ -31,6 +39,27 @@ describe('buildCompareRows', () => {
   it('returns one value per job in input order for every row', () => {
     const rows = buildCompareRows([job({ id: 'j1' }), job({ id: 'j2' }), job({ id: 'j3' })])
     expect(rows.every((row) => row.values.length === 3)).toBe(true)
+  })
+
+  it('compares company industry, scale and ownership when companies are provided', () => {
+    const companies = new Map([
+      ['company-1', company('company-1', { name: '云帆智能', industry: '人工智能' })],
+      ['company-2', company('company-2', { name: '北辰银行', industry: '金融', scale: '10000 人以上', ownership: '股份制' })],
+    ])
+    const rows = buildCompareRows([
+      job({ id: 'j1', companyId: 'company-1', companyName: '云帆智能' }),
+      job({ id: 'j2', companyId: 'company-2', companyName: '北辰银行' }),
+    ], companies)
+
+    expect(rows.find((row) => row.label === '行业')?.values).toEqual(['人工智能', '金融'])
+    expect(rows.find((row) => row.label === '规模')?.values).toEqual(['1000-9999 人', '10000 人以上'])
+    expect(rows.find((row) => row.label === '公司性质')?.values).toEqual(['民营', '股份制'])
+  })
+
+  it('falls back to a placeholder when the company is unknown', () => {
+    const rows = buildCompareRows([job({ id: 'j1', companyId: 'company-9' })], new Map())
+
+    expect(rows.find((row) => row.label === '行业')?.values).toEqual(['—'])
   })
 
   it('caps the documented comparison size', () => {

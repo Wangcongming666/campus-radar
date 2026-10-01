@@ -1,13 +1,20 @@
 <script setup lang="ts">
-import type { Job } from '@career-launch/shared'
-import { computed, ref } from 'vue'
+import type { Company, Job } from '@career-launch/shared'
+import { computed, onMounted, ref } from 'vue'
+import { repository } from '../../services/repository'
 import { buildCompareRows } from './compare'
 
 const props = defineProps<{ jobs: Job[] }>()
 const emit = defineEmits<{ remove: [id: string]; clear: [] }>()
 const open = ref(false)
+const companies = ref(new Map<string, Company>())
 
-const rows = computed(() => buildCompareRows(props.jobs))
+onMounted(async () => {
+  const page = await repository.companies.list({ keyword: '', page: 1, pageSize: 100 })
+  companies.value = new Map(page.items.map((company) => [company.id, company]))
+})
+
+const rows = computed(() => buildCompareRows(props.jobs, companies.value))
 </script>
 <template>
   <div class="compare-tray" role="region" aria-label="职位对比">
