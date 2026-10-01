@@ -100,6 +100,23 @@ describe('mock career repository', () => {
     expect(page.total).toBeGreaterThan(0)
   })
 
+  it('falls back to seed data when the persisted payload is valid JSON but not a state object', async () => {
+    localStorage.setItem('career-launch-mock-v2', 'null')
+    const repository = createMockRepository({ storage: 'indexeddb', latencyMs: 0 })
+
+    const page = await repository.jobs.list({ city: [], category: [], education: [], sort: 'latest', page: 1, pageSize: 5 })
+    expect(page.total).toBeGreaterThan(0)
+  })
+
+  it('falls back to seed data when persisted collections are missing', async () => {
+    localStorage.setItem('career-launch-mock-v2', '{"jobs":[]}')
+    const repository = createMockRepository({ storage: 'indexeddb', latencyMs: 0 })
+
+    const applications = await repository.applications.list()
+    expect(Array.isArray(applications)).toBe(true)
+    expect(applications.length).toBeGreaterThan(0)
+  })
+
   it('reads the legacy v1 storage key and migrates it on save', async () => {
     const legacy = createMockRepository({ storage: 'indexeddb', latencyMs: 0 })
     const application = await legacy.applications.start('job-007')

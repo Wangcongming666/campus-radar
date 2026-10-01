@@ -41,8 +41,11 @@ function selectTab(key: TabKey) {
 
 async function load() {
   loading.value = true
-  applications.value = await repository.applications.list()
-  loading.value = false
+  try {
+    applications.value = await repository.applications.list()
+  } finally {
+    loading.value = false
+  }
 }
 
 function openApplication(payload: { id: string; focusNote?: boolean }) {

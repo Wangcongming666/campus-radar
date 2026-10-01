@@ -79,6 +79,14 @@ function includesKeyword(values: string[], keyword?: string): boolean {
 const STORAGE_KEY = 'career-launch-mock-v2'
 const LEGACY_KEY = 'career-launch-mock-v1'
 
+const STATE_COLLECTIONS = ['companies', 'jobs', 'seasons', 'articles', 'questions', 'applications', 'resumes', 'notifications', 'users', 'operators'] as const
+
+function isStateShape(value: unknown): value is State {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as Partial<Record<keyof State, unknown>>
+  return STATE_COLLECTIONS.every((key) => Array.isArray(candidate[key])) && 'currentUser' in candidate
+}
+
 function createStateStore(storage: MockRepositoryOptions['storage'], includeDemoApplications: boolean) {
   let memory = initialState(includeDemoApplications)
 
@@ -86,7 +94,8 @@ function createStateStore(storage: MockRepositoryOptions['storage'], includeDemo
     const saved = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_KEY)
     if (saved) {
       try {
-        memory = JSON.parse(saved) as State
+        const parsed: unknown = JSON.parse(saved)
+        memory = isStateShape(parsed) ? parsed : initialState(includeDemoApplications)
       } catch {
         memory = initialState(includeDemoApplications)
       }
