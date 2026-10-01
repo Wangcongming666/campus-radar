@@ -1,5 +1,5 @@
 import type { Application, ApplicationStage } from '@career-launch/shared'
-import { daysUntil, shanghaiDateKey } from '@career-launch/shared'
+import { addDaysToKey, daysUntil, keyWeekday, shanghaiDateKey, shanghaiTodayKey } from '@career-launch/shared'
 import { stageMeta } from './stages'
 
 export interface StageCount {
@@ -23,10 +23,6 @@ export interface WorkspaceStats {
 const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六']
 const TERMINAL_STAGES = new Set<ApplicationStage>(['offer', 'rejected', 'closed'])
 
-function localDateKey(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-}
-
 function appliedDateKey(application: Application): string | null {
   const appliedAt = application.appliedAt ?? application.events[0]?.occurredAt
   return appliedAt ? shanghaiDateKey(appliedAt) : null
@@ -41,12 +37,11 @@ export function buildStats(applications: Application[], now = new Date()): Works
     count: active.filter((item) => item.stage === stage).length,
   }))
 
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const todayKey = shanghaiTodayKey(now)
   const weekly: DayCount[] = []
   for (let offset = 6; offset >= 0; offset -= 1) {
-    const day = new Date(today)
-    day.setDate(day.getDate() - offset)
-    weekly.push({ dateKey: localDateKey(day), weekday: WEEKDAY_LABELS[day.getDay()] ?? '', count: 0 })
+    const dateKey = addDaysToKey(todayKey, -offset)
+    weekly.push({ dateKey, weekday: WEEKDAY_LABELS[keyWeekday(dateKey)] ?? '', count: 0 })
   }
   const weeklyByDate = new Map(weekly.map((entry) => [entry.dateKey, entry]))
   for (const application of active) {

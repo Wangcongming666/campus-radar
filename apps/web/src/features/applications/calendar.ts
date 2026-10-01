@@ -1,5 +1,5 @@
 import type { Application, RecruitmentSeason } from '@career-launch/shared'
-import { daysUntil, shanghaiDateKey } from '@career-launch/shared'
+import { addDaysToKey, daysUntil, keyWeekday, shanghaiDateKey, shanghaiTodayKey } from '@career-launch/shared'
 
 export type CalendarTone = 'danger' | 'warning' | 'primary' | 'neutral'
 export type CalendarEventKind = 'deadline' | 'reminder' | 'season_start' | 'season_end'
@@ -19,19 +19,15 @@ export interface CalendarCell {
   events: CalendarEvent[]
 }
 
-export function localDateKey(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-}
-
 export function buildMonthGrid(year: number, month: number, now = new Date()): Array<Omit<CalendarCell, 'events'>> {
-  const first = new Date(year, month, 1)
-  const start = new Date(year, month, 1 - first.getDay())
-  const todayKey = localDateKey(now)
+  const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`
+  const firstKey = `${monthPrefix}-01`
+  const startKey = addDaysToKey(firstKey, -keyWeekday(firstKey))
+  const todayKey = shanghaiTodayKey(now)
   const cells: Array<Omit<CalendarCell, 'events'>> = []
   for (let index = 0; index < 42; index += 1) {
-    const date = new Date(start.getFullYear(), start.getMonth(), start.getDate() + index)
-    const dateKey = localDateKey(date)
-    cells.push({ dateKey, day: date.getDate(), inMonth: date.getMonth() === month, isToday: dateKey === todayKey })
+    const dateKey = addDaysToKey(startKey, index)
+    cells.push({ dateKey, day: Number.parseInt(dateKey.slice(8), 10), inMonth: dateKey.startsWith(monthPrefix), isToday: dateKey === todayKey })
   }
   return cells
 }

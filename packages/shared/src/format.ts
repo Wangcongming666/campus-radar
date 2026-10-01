@@ -37,6 +37,25 @@ export function shanghaiDateKey(value: string): string {
   return new Date(Date.parse(value) + SHANGHAI_OFFSET_MS).toISOString().slice(0, 10)
 }
 
+export function shanghaiTodayKey(now = new Date()): string {
+  return shanghaiDateKey(now.toISOString())
+}
+
+function parseDateKey(key: string): [number, number, number] {
+  const [year = 1970, month = 1, day = 1] = key.split('-').map((part) => Number.parseInt(part, 10))
+  return [year, month, day]
+}
+
+export function addDaysToKey(key: string, days: number): string {
+  const [year, month, day] = parseDateKey(key)
+  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10)
+}
+
+export function keyWeekday(key: string): number {
+  const [year, month, day] = parseDateKey(key)
+  return new Date(Date.UTC(year, month - 1, day)).getUTCDay()
+}
+
 function positiveInteger(value: string | null, fallback: number): number {
   const parsed = Number.parseInt(value ?? '', 10)
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback

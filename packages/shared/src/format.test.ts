@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { daysUntil, formatDeadline, formatDeadlineStatus, parseJobQuery, serializeJobQuery, shanghaiDateKey } from './format'
+import { addDaysToKey, daysUntil, formatDeadline, formatDeadlineStatus, keyWeekday, parseJobQuery, serializeJobQuery, shanghaiDateKey, shanghaiTodayKey } from './format'
 
 describe('formatDeadline', () => {
   it('uses Shanghai calendar days for a future deadline', () => {
@@ -56,5 +56,17 @@ describe('deadline status helpers', () => {
   it('maps ISO values onto Shanghai calendar dates', () => {
     expect(shanghaiDateKey('2026-10-01T17:30:00.000Z')).toBe('2026-10-02')
     expect(shanghaiDateKey('2026-10-01T02:30:00.000Z')).toBe('2026-10-01')
+  })
+
+  it('derives the Shanghai date key of "now" regardless of machine timezone', () => {
+    expect(shanghaiTodayKey(new Date('2026-10-01T20:00:00.000Z'))).toBe('2026-10-02')
+    expect(shanghaiTodayKey(new Date('2026-10-01T02:00:00.000Z'))).toBe('2026-10-01')
+  })
+
+  it('adds days and reads weekdays on pure date keys', () => {
+    expect(addDaysToKey('2026-10-01', -4)).toBe('2026-09-27')
+    expect(addDaysToKey('2026-10-01', 31)).toBe('2026-11-01')
+    expect(keyWeekday('2026-10-01')).toBe(4)
+    expect(keyWeekday('2026-09-27')).toBe(0)
   })
 })

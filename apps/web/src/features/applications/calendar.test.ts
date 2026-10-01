@@ -1,7 +1,7 @@
 import type { Application, RecruitmentSeason } from '@career-launch/shared'
 import { describe, expect, it } from 'vitest'
 
-import { buildCalendar, buildMonthGrid, localDateKey } from './calendar'
+import { buildCalendar, buildMonthGrid } from './calendar'
 
 const NOW = new Date(2026, 9, 1, 12, 0, 0)
 
@@ -23,13 +23,13 @@ describe('buildMonthGrid', () => {
   it('always renders 42 cells starting on Sunday', () => {
     const grid = buildMonthGrid(2026, 9, NOW)
     expect(grid).toHaveLength(42)
-    expect(localDateKey(new Date(2026, 8, 27))).toBe(grid[0]?.dateKey)
+    expect(grid[0]?.dateKey).toBe('2026-09-27')
   })
 
-  it('marks today and out-of-month cells', () => {
-    const grid = buildMonthGrid(2026, 9, NOW)
+  it('marks today and out-of-month cells using the Shanghai day boundary', () => {
+    const grid = buildMonthGrid(2026, 9, new Date('2026-10-01T20:00:00.000Z'))
     const today = grid.find((cell) => cell.isToday)
-    expect(today?.dateKey).toBe('2026-10-01')
+    expect(today?.dateKey).toBe('2026-10-02')
     expect(grid[0]?.inMonth).toBe(false)
     expect(grid.find((cell) => cell.dateKey === '2026-10-01')?.inMonth).toBe(true)
   })
