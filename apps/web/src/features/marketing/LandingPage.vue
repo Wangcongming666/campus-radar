@@ -1,5 +1,14 @@
 <script setup lang="ts">
-defineEmits<{ login: [] }>()
+import { useRouter } from 'vue-router'
+import { useSessionStore } from '../../stores/session'
+
+const session = useSessionStore()
+const router = useRouter()
+
+async function start() {
+  if (session.user) await router.push('/me/workspace')
+  else session.requestLogin()
+}
 </script>
 <template>
   <div class="landing">
@@ -8,7 +17,7 @@ defineEmits<{ login: [] }>()
         <p class="eyebrow">面向高校应届生的一站式求职平台</p>
         <h1>把复杂的校招，<br />变成清晰的下一步</h1>
         <p class="lead">可信职位、专业简历与投递进度，在一个地方完成。覆盖秋招、春招、提前批与补录。</p>
-        <button class="cl-primary-button cta" type="button" @click="$emit('login')">登录 / 注册</button>
+        <button class="cl-primary-button cta" type="button" @click="start">{{ session.user ? '进入求职工作台' : '登录 / 注册' }}</button>
         <small class="demo-note">演示环境：邮箱验证码登录，验证码见登录框提示。</small>
       </div>
     </section>
