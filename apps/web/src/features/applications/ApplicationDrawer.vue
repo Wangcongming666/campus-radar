@@ -19,8 +19,9 @@ const noteInput = ref<HTMLTextAreaElement | null>(null)
 const reminders = computed(() => props.application?.reminders ?? [])
 
 watch(
-  () => props.application,
-  async (value) => {
+  () => props.application?.id,
+  async (id) => {
+    const value = id ? props.application : null
     noteDraft.value = value?.note ?? ''
     reminderTitle.value = ''
     reminderAt.value = ''
