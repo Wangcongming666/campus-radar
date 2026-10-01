@@ -12,6 +12,7 @@ import type {
   Page,
   Question,
   RecruitmentSeason,
+  Reminder,
   Resume,
   User,
 } from '@career-launch/shared'
@@ -94,6 +95,13 @@ export interface CareerRepository {
     list(): Promise<Application[]>
     start(jobId: string): Promise<Application>
     updateStage(id: string, stage: ApplicationStage, note?: string): Promise<Application>
+    archive(id: string, value: boolean): Promise<void>
+    setNote(id: string, note: string): Promise<Application>
+    reminders: {
+      add(applicationId: string, remindAt: string, title: string): Promise<Reminder>
+      remove(id: string): Promise<void>
+    }
+    syncDueReminders(): Promise<Notification[]>
   }
   resumes: {
     list(): Promise<Resume[]>

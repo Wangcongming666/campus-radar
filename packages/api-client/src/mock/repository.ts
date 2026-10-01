@@ -11,6 +11,7 @@ import type {
   Page,
   Question,
   RecruitmentSeason,
+  Reminder,
   Resume,
   User,
 } from '@career-launch/shared'
@@ -75,23 +76,32 @@ function includesKeyword(values: string[], keyword?: string): boolean {
   return values.some((value) => value.toLocaleLowerCase('zh-CN').includes(normalized))
 }
 
+const STORAGE_KEY = 'career-launch-mock-v2'
+const LEGACY_KEY = 'career-launch-mock-v1'
+
 function createStateStore(storage: MockRepositoryOptions['storage'], includeDemoApplications: boolean) {
-  const key = 'career-launch-mock-v1'
   let memory = initialState(includeDemoApplications)
 
   if (storage === 'indexeddb' && typeof localStorage !== 'undefined') {
-    const saved = localStorage.getItem(key)
-    if (saved) memory = JSON.parse(saved) as State
+    const saved = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_KEY)
+    if (saved) {
+      try {
+        memory = JSON.parse(saved) as State
+      } catch {
+        memory = initialState(includeDemoApplications)
+      }
+      localStorage.removeItem(LEGACY_KEY)
+    }
   }
 
   return {
     get: () => memory,
     save: () => {
-      if (storage === 'indexeddb' && typeof localStorage !== 'undefined') localStorage.setItem(key, JSON.stringify(memory))
+      if (storage === 'indexeddb' && typeof localStorage !== 'undefined') localStorage.setItem(STORAGE_KEY, JSON.stringify(memory))
     },
     reset: () => {
       memory = initialState(includeDemoApplications)
-      if (storage === 'indexeddb' && typeof localStorage !== 'undefined') localStorage.setItem(key, JSON.stringify(memory))
+      if (storage === 'indexeddb' && typeof localStorage !== 'undefined') localStorage.setItem(STORAGE_KEY, JSON.stringify(memory))
     },
   }
 }
@@ -113,6 +123,7 @@ export function createMockRepository(options: MockRepositoryOptions = {}): Caree
     if (query.category.length) items = items.filter((job) => query.category.includes(job.category))
     if (query.education.length) items = items.filter((job) => query.education.some((level) => job.education.includes(level as Job['education'][number])))
     if (query.seasonId) items = items.filter((job) => job.seasonId === query.seasonId)
+    if (query.favorite) items = items.filter((job) => job.favorite)
     items.sort((a, b) => query.sort === 'deadline' ? a.deadlineAt.localeCompare(b.deadlineAt) : b.publishedAt.localeCompare(a.publishedAt))
     return paginate(clone(items), query.page, query.pageSize)
   }
@@ -210,6 +221,65 @@ export function createMockRepository(options: MockRepositoryOptions = {}): Caree
         application.events.push({ id: crypto.randomUUID(), fromStage: previous, toStage: stage, ...(note ? { note } : {}), occurredAt: application.updatedAt })
         store.save()
         return clone(application)
+      },
+      async archive(id, value) {
+        await delay()
+        const application = state().applications.find((item) => item.id === id)
+        if (!application) throw new ApiError('APPLICATION_NOT_FOUND', '投递记录不存在')
+        application.archived = value
+        application.updatedAt = new Date().toISOString()
+        store.save()
+      },
+      async setNote(id, note) {
+        await delay()
+        const application = state().applications.find((item) => item.id === id)
+        if (!application) throw new ApiError('APPLICATION_NOT_FOUND', '投递记录不存在')
+        application.note = note
+        application.updatedAt = new Date().toISOString()
+        store.save()
+        return clone(application)
+      },
+      reminders: {
+        async add(applicationId, remindAt, title) {
+          await delay()
+          const application = state().applications.find((item) => item.id === applicationId)
+          if (!application) throw new ApiError('APPLICATION_NOT_FOUND', '投递记录不存在')
+          const reminder: Reminder = { id: crypto.randomUUID(), applicationId, title, remindAt, channels: ['in_app'], status: 'scheduled' }
+          application.reminders.push(reminder)
+          store.save()
+          return clone(reminder)
+        },
+        async remove(id) {
+          await delay()
+          for (const application of state().applications) {
+            if (application.reminders.some((item) => item.id === id)) application.reminders = application.reminders.filter((item) => item.id !== id)
+          }
+          store.save()
+        },
+      },
+      async syncDueReminders() {
+        await delay()
+        const now = Date.now()
+        const created: Notification[] = []
+        for (const application of state().applications) {
+          for (const reminder of application.reminders) {
+            if (reminder.status !== 'scheduled' || Date.parse(reminder.remindAt) > now) continue
+            reminder.status = 'sent'
+            const notification: Notification = {
+              id: crypto.randomUUID(),
+              title: reminder.title,
+              body: `${application.jobTitle}（${application.companyName}）的提醒已到期`,
+              type: 'deadline',
+              read: false,
+              createdAt: new Date().toISOString(),
+              href: '/me/workspace',
+            }
+            state().notifications.unshift(notification)
+            created.push(notification)
+          }
+        }
+        if (created.length) store.save()
+        return clone(created)
       },
     },
     resumes: {

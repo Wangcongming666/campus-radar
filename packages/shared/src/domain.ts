@@ -85,6 +85,7 @@ export interface JobQuery {
   category: string[]
   education: string[]
   seasonId?: string
+  favorite?: boolean
   sort: 'latest' | 'deadline'
   page: number
   pageSize: number
