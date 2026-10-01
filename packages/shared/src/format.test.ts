@@ -39,9 +39,11 @@ describe('deadline status helpers', () => {
 
   it.each([
     ['2026-10-01T15:59:59.000Z', 0, '今天截止', 'danger'],
-    ['2026-10-02T15:59:59.000Z', 1, '1 天后截止', 'warning'],
-    ['2026-10-04T15:59:59.000Z', 3, '3 天后截止', 'warning'],
-    ['2026-10-06T15:59:59.000Z', 5, '5 天后截止', 'primary'],
+    ['2026-10-02T15:59:59.000Z', 1, '1 天后截止', 'danger'],
+    ['2026-10-04T15:59:59.000Z', 3, '3 天后截止', 'danger'],
+    ['2026-10-06T15:59:59.000Z', 5, '5 天后截止', 'warning'],
+    ['2026-10-08T15:59:59.000Z', 7, '7 天后截止', 'warning'],
+    ['2026-10-09T15:59:59.000Z', 8, '8 天后截止', 'primary'],
     ['2026-09-29T15:59:59.000Z', -2, '已过期 2 天', 'danger'],
   ] as const)('formatDeadlineStatus(%s)', (value, days, label, tone) => {
     expect(formatDeadlineStatus(value, now)).toEqual({ days, label, tone })
