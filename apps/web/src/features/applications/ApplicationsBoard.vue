@@ -40,20 +40,16 @@ async function archive(id: string) {
         <StatusBadge :tone="stageMeta[stage]?.tone ?? 'neutral'">{{ stageMeta[stage]?.label }}</StatusBadge>
         <span>{{ grouped[stage]?.length ?? 0 }}</span>
       </header>
-      <button
-        v-for="item in grouped[stage]"
-        :key="item.id"
-        class="application-card"
-        type="button"
-        @click="emit('open-application', { id: item.id })"
-      >
-        <span class="logo" aria-hidden="true">{{ item.companyLogoText }}</span>
-        <strong>{{ item.jobTitle }}</strong>
-        <small>{{ item.companyName }} · {{ item.city.join(' / ') }}</small>
-        <time :title="new Date(item.updatedAt).toLocaleString('zh-CN')">停留 {{ idleDays(item) }} 天</time>
-        <span v-if="deadline(item).days <= 7 && deadline(item).days >= 0" class="deadline-chip" :class="deadline(item).tone">
-          {{ deadline(item).label }}
-        </span>
+      <article v-for="item in grouped[stage]" :key="item.id" class="application-card">
+        <button class="card-main" type="button" @click="emit('open-application', { id: item.id })">
+          <span class="logo" aria-hidden="true">{{ item.companyLogoText }}</span>
+          <strong>{{ item.jobTitle }}</strong>
+          <small>{{ item.companyName }} · {{ item.city.join(' / ') }}</small>
+          <time :title="new Date(item.updatedAt).toLocaleString('zh-CN')">停留 {{ idleDays(item) }} 天</time>
+          <span v-if="deadline(item).days <= 7 && deadline(item).days >= 0" class="deadline-chip" :class="deadline(item).tone">
+            {{ deadline(item).label }}
+          </span>
+        </button>
         <span
           v-if="idleDays(item) > 7"
           class="stale-chip"
@@ -66,19 +62,18 @@ async function archive(id: string) {
           class="archive-confirm"
           role="group"
           :aria-label="`确认归档 ${item.jobTitle}`"
-          @click.stop
         >
-          <button type="button" @click.stop="confirmArchiveId = null">取消</button>
-          <button type="button" @click.stop="archive(item.id)">确认归档</button>
+          <button type="button" @click="confirmArchiveId = null">取消</button>
+          <button type="button" @click="archive(item.id)">确认归档</button>
         </span>
         <button
           v-else
           class="archive-link"
           type="button"
           :aria-label="`归档 ${item.jobTitle}`"
-          @click.stop="confirmArchiveId = item.id"
+          @click="confirmArchiveId = item.id"
         >归档</button>
-      </button>
+      </article>
     </section>
   </div>
 </template>
@@ -87,11 +82,12 @@ async function archive(id: string) {
 .board>section{min-height:390px;padding:11px;border-radius:10px;background:var(--cl-border)}
 .board>section>header{display:flex;justify-content:space-between;margin-bottom:10px}
 .board>section>header>span{color:var(--cl-muted)}
-.application-card{position:relative;width:100%;display:grid;grid-template-columns:34px 1fr auto;gap:3px 9px;margin-bottom:8px;padding:12px;border:0;border-radius:9px;color:var(--cl-text);background:var(--cl-surface);text-align:left}
+.application-card{position:relative;width:100%;margin-bottom:8px;border-radius:9px;background:var(--cl-surface)}
+.card-main{width:100%;display:grid;grid-template-columns:34px 1fr auto;gap:3px 9px;padding:12px;border:0;border-radius:9px;color:var(--cl-text);background:transparent;text-align:left}
 .logo{width:34px;height:34px;display:grid;grid-row:span 2;place-items:center;border-radius:8px;color:var(--cl-primary);background:var(--cl-primary-soft);font-weight:800}
-.application-card strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.application-card small{grid-column:2;color:var(--cl-muted);font-size:11px}
-.application-card time{grid-column:1/-1;margin-top:4px;color:var(--cl-muted);font-size:11px}
+.card-main strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card-main small{grid-column:2;color:var(--cl-muted);font-size:11px}
+.card-main time{grid-column:1/-1;margin-top:4px;color:var(--cl-muted);font-size:11px}
 .deadline-chip{grid-column:1/-1;justify-self:start;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600}
 .deadline-chip.danger{color:#b42318;background:color-mix(in srgb,#f04438 14%,transparent)}
 .deadline-chip.warning{color:#b54708;background:color-mix(in srgb,#f79009 16%,transparent)}
