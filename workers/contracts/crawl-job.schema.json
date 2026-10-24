@@ -1,0 +1,209 @@
+{
+  "type": "object",
+  "properties": {
+    "externalId": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 200
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "companyId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "canonicalUrl": {
+      "type": "string",
+      "format": "uri"
+    },
+    "title": {
+      "type": "string",
+      "maxLength": 300
+    },
+    "role": {
+      "type": "string",
+      "maxLength": 64
+    },
+    "cities": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "education": {
+      "type": "string",
+      "enum": [
+        "any",
+        "associate",
+        "bachelor",
+        "master",
+        "doctorate"
+      ]
+    },
+    "recruitmentType": {
+      "type": "string",
+      "enum": [
+        "campus",
+        "internship"
+      ]
+    },
+    "graduationYears": {
+      "type": "array",
+      "items": {
+        "type": "integer"
+      }
+    },
+    "skills": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "descriptionMd": {
+      "type": "string",
+      "maxLength": 50000
+    },
+    "salary": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "schemaVersion": {
+              "type": "integer",
+              "const": 1
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            },
+            "period": {
+              "type": "string",
+              "enum": [
+                "month",
+                "year",
+                "day"
+              ]
+            },
+            "minMinor": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "maxMinor": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "months": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "negotiable": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "schemaVersion",
+            "currency",
+            "period",
+            "minMinor",
+            "maxMinor",
+            "months",
+            "negotiable"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "deadlineAt": {
+      "anyOf": [
+        {
+          "type": "string",
+          "format": "date-time"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "deadlinePrecision": {
+      "type": "string",
+      "enum": [
+        "exact",
+        "date",
+        "unknown"
+      ]
+    },
+    "sourceTimezone": {
+      "type": "string"
+    },
+    "publishedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "observedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "open",
+        "closed",
+        "unknown"
+      ]
+    },
+    "contentHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    }
+  },
+  "required": [
+    "externalId",
+    "companyId",
+    "canonicalUrl",
+    "title",
+    "role",
+    "cities",
+    "education",
+    "recruitmentType",
+    "graduationYears",
+    "skills",
+    "descriptionMd",
+    "salary",
+    "deadlineAt",
+    "deadlinePrecision",
+    "sourceTimezone",
+    "publishedAt",
+    "observedAt",
+    "status",
+    "contentHash"
+  ],
+  "additionalProperties": false
+}

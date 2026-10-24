@@ -1,18 +1,17 @@
 {
-  "name": "career-launch",
+  "name": "campus-radar",
   "version": "0.1.0",
   "private": true,
-  "packageManager": "pnpm@11.19.0",
+  "workspaces": [
+    "apps/web"
+  ],
   "scripts": {
-    "dev:web": "pnpm --filter @career-launch/web dev",
-    "dev:admin": "pnpm --filter @career-launch/admin dev",
-    "test": "pnpm -r --if-present test",
-    "typecheck": "pnpm -r --if-present typecheck",
-    "build": "pnpm -r --if-present build"
-  },
-  "devDependencies": {
-    "@types/node": "latest",
-    "typescript": "5.9.3",
-    "vitest": "latest"
+    "dev": "npm run dev --workspace=@campus-radar/web",
+    "build": "npm run build --workspace=@campus-radar/web",
+    "start": "npm run start --workspace=@campus-radar/web",
+    "typecheck": "npm run typecheck --workspace=@campus-radar/web",
+    "test": "npm run test --workspace=@campus-radar/web",
+    "test:e2e": "npm run test:e2e --workspace=@campus-radar/web",
+    "test:e2e:api": "npm run test:e2e:api --workspace=@campus-radar/web"
   }
 }

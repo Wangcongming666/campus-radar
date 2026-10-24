@@ -1,0 +1,22 @@
+{
+  "routes": 33,
+  "mobileViewport": 390,
+  "tabletRoutes": 6,
+  "errors": [],
+  "overflow": [],
+  "finalLandingCheck": {
+    "results": [
+      {
+        "viewport": 1512,
+        "documentWidth": 1512,
+        "screenshotLoaded": true
+      },
+      {
+        "viewport": 390,
+        "documentWidth": 390,
+        "screenshotLoaded": true
+      }
+    ],
+    "errors": []
+  }
+}

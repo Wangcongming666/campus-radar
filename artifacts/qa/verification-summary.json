@@ -1,0 +1,94 @@
+{
+  "date": "2026-10-23",
+  "typecheck": "passed",
+  "productionBuild": "passed",
+  "unitTests": {
+    "passed": 24
+  },
+  "postgresApiIntegration": {
+    "passed": 6
+  },
+  "workerWithPostgres": {
+    "passed": 37,
+    "skipped": 0
+  },
+  "playwright": {
+    "passed": 9,
+    "routeSmokeCount": 33
+  },
+  "npmAudit": {
+    "vulnerabilities": 0
+  },
+  "review": {
+    "blockingFindingsRemaining": 0,
+    "fixed": "Same-column reorder undo restores stable neighbors; observed regression RED then GREEN."
+  },
+  "boundaries": "Default mock remains a local preview. API account/profile UI is connected to BFF; other workspace modules show pending integration. Real Supabase, live sources, AI, export/erasure and deployment remain unconfigured.",
+  "accountIntegration": {
+    "date": "2026-10-23",
+    "typecheck": "passed",
+    "productionBuild": "passed",
+    "unitTests": {
+      "passed": 35,
+      "postgresSkippedThisBatch": 6
+    },
+    "mockBrowserRegression": {
+      "passed": 9,
+      "routeSmokeCount": 33
+    },
+    "apiBrowserBoundaryTests": {
+      "passed": 9,
+      "realSupabaseCalled": false
+    },
+    "reviewFixed": [
+      "Cloud theme restoration",
+      "Pristine profile snapshot sync and dirty draft remote-update protection"
+    ],
+    "screenshots": [
+      "api-account-desktop-fixture.png",
+      "api-account-mobile-fixture.png"
+    ],
+    "limitation": "User profile PATCH has no conditional version contract; protection covers already observed remote updates."
+  },
+  "localFunctionalCompletion": {
+    "date": "2026-10-23",
+    "typecheck": "passed",
+    "productionBuild": "passed",
+    "unitTests": {
+      "passed": 85,
+      "postgresSkippedThisBatch": 6
+    },
+    "productionBrowserTests": {
+      "passed": 44,
+      "routeSmokeCount": 33,
+      "mobileRouteCount": 33,
+      "tabletRouteCount": 6,
+      "consoleErrors": 0
+    },
+    "apiAccountBoundaryRegression": {
+      "passed": 9,
+      "realSupabaseCalled": false
+    },
+    "npmAudit": {
+      "vulnerabilities": 0
+    },
+    "reviewFixed": [
+      "Pointer-based Kanban target selection",
+      "Version-protected cross-tab pipeline notes with draft preservation",
+      "Resume library and calendar optional-field validation",
+      "Local PDF Canvas pagination and safe file ingestion",
+      "Onboarding multi-entry rollback and full backup attachments",
+      "Radar SVG text hydration"
+    ],
+    "screenshots": [
+      "functional-jobs-desktop.png",
+      "functional-pipeline-desktop.png",
+      "functional-experiences-desktop.png",
+      "functional-resumes-desktop.png",
+      "functional-resume-pdf-desktop.png",
+      "functional-offer-compare-desktop.png",
+      "functional-calendar-desktop.png"
+    ],
+    "boundaries": "All 33 local routes have complete persistent local workflows. Base recruitment/salary/signal records remain fictional. Summaries, matching, diagnostics and practice reports use actual-input local rules. Live sources, LLM, server transcription, external push, cross-device and multiplayer services remain unconnected. No PG or worker integration suite re-run in this batch; no deployment."
+  }
+}

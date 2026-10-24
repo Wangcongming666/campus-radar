@@ -1,1 +1,0 @@
-<template><section><h1>浏览记录</h1><p>你最近查看过的职位、公司和面试内容会按日期显示。</p><div class="history cl-card"><strong>今天</strong><p>浏览记录将在你查看详情页后出现。</p></div></section></template><style scoped>h1{margin:0;font-size:30px}section>p,.history p{color:var(--cl-muted)}.history{margin-top:20px;padding:24px}</style>

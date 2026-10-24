@@ -1,0 +1,200 @@
+{
+  "report": [
+    {
+      "route": "/",
+      "viewport": 390,
+      "width": 390
+    },
+    {
+      "route": "/login",
+      "viewport": 390,
+      "width": 390
+    },
+    {
+      "route": "/register",
+      "viewport": 390,
+      "width": 390
+    },
+    {
+      "route": "/onboarding",
+      "viewport": 390,
+      "width": 390
+    },
+    {
+      "route": "/jobs",
+      "viewport": 390,
+      "width": 390
+    },
+    {
+      "route": "/jobs/job-1",
+      "viewport": 390,
+      "width": 390
+    },
+    {
+      "route": "/company/tencent",
+      "viewport": 390,
+      "width": 390
+    },
+    {
+      "route": "/subscriptions",
+      "viewport": 390,
+      "width": 390
+    },
+    {
+      "route": "/referral",
+      "viewport": 390,
+      "width": 390
+    },
+    {
+      "route": "/pipeline",
+      "viewport": 390,
+      "width": 390
+    },
+    {
+      "route": "/calendar",
+      "viewport": 390,
+      "width": 390
+    },
+    {
+      "route": "/analytics",
+      "viewport": 390,
+      "width": 390
+    },
+    {
+      "route": "/resumes",
+      "viewport": 390,
+      "width": 390
+    },
+    {
+      "route": "/interview/app-1/timeline",
+      "viewport": 390,
+      "width": 390
+    },
+    {
+      "route": "/interview/app-1/review",
+      "viewport": 390,
+      "width": 390
+    },
+    {
+      "route": "/mock",
+      "viewport": 390,
+      "width": 390
+    },
+    {
+      "route": "/style/tencent",
+      "viewport": 390,
+      "width": 390
+    },
+    {
+      "route": "/experiences",
+      "viewport": 390,
+      "width": 390
+    },
+    {
+      "route": "/experiences/exp-1",
+      "viewport": 390,
+      "width": 390
+    },
+    {
+      "route": "/questions",
+      "viewport": 390,
+      "width": 390
+    },
+    {
+      "route": "/handbook",
+      "viewport": 390,
+      "width": 390
+    },
+    {
+      "route": "/pack/tencent",
+      "viewport": 390,
+      "width": 390
+    },
+    {
+      "route": "/resume-check",
+      "viewport": 390,
+      "width": 390
+    },
+    {
+      "route": "/planner",
+      "viewport": 390,
+      "width": 390
+    },
+    {
+      "route": "/salary",
+      "viewport": 390,
+      "width": 390
+    },
+    {
+      "route": "/offer-compare",
+      "viewport": 390,
+      "width": 390
+    },
+    {
+      "route": "/community",
+      "viewport": 390,
+      "width": 390
+    },
+    {
+      "route": "/buddy",
+      "viewport": 390,
+      "width": 390
+    },
+    {
+      "route": "/radar",
+      "viewport": 390,
+      "width": 390
+    },
+    {
+      "route": "/me",
+      "viewport": 390,
+      "width": 390
+    },
+    {
+      "route": "/favorites",
+      "viewport": 390,
+      "width": 390
+    },
+    {
+      "route": "/notifications",
+      "viewport": 390,
+      "width": 390
+    },
+    {
+      "route": "/settings",
+      "viewport": 390,
+      "width": 390
+    },
+    {
+      "route": "/jobs",
+      "viewport": 820,
+      "width": 820
+    },
+    {
+      "route": "/pipeline",
+      "viewport": 820,
+      "width": 820
+    },
+    {
+      "route": "/calendar",
+      "viewport": 820,
+      "width": 820
+    },
+    {
+      "route": "/resumes",
+      "viewport": 820,
+      "width": 820
+    },
+    {
+      "route": "/questions",
+      "viewport": 820,
+      "width": 820
+    },
+    {
+      "route": "/offer-compare",
+      "viewport": 820,
+      "width": 820
+    }
+  ],
+  "errors": []
+}
