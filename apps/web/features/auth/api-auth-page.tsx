@@ -21,7 +21,7 @@ export function ApiAuthPage({ register = false, brand }: { register?: boolean; b
   const [error, setError] = useState('');
   const [requestId, setRequestId] = useState<string>();
   const [fields, setFields] = useState<Record<string, string[]>>({});
-  const [verification, setVerification] = useState(false);
+  const [registration, setRegistration] = useState<{ verificationRequired: boolean } | null>(null);
 
   async function submit() {
     setError('');
@@ -29,8 +29,12 @@ export function ApiAuthPage({ register = false, brand }: { register?: boolean; b
     setRequestId(undefined);
     try {
       if (register) {
-        await campus.register({ email: email.trim(), password, displayName: name.trim() });
-        setVerification(true);
+        const result = await campus.register({
+          email: email.trim(),
+          password,
+          displayName: name.trim(),
+        });
+        setRegistration(result);
       } else {
         await campus.login({ email: email.trim(), password });
         router.replace(safeReturnTo(new URLSearchParams(window.location.search).get('returnTo')));
@@ -76,16 +80,20 @@ export function ApiAuthPage({ register = false, brand }: { register?: boolean; b
             返回首页
           </Link>
           <SmallTag active>Campus Radar · 个人账号</SmallTag>
-          {verification ? (
+          {registration ? (
             <div role="status" className="space-y-5 mt-6">
               <MailCheck className="size-10 text-primary" />
-              <h1>请查收验证邮件</h1>
+              <h1>{registration.verificationRequired ? '请查收验证邮件' : '账号已创建'}</h1>
               <p className="text-sm text-muted-foreground leading-7">
-                如果该邮箱可以注册，你将收到验证邮件。请在当前浏览器打开邮件链接完成验证。未收到时也请检查垃圾邮件。
+                {registration.verificationRequired
+                  ? '如果该邮箱可以注册，你将收到验证邮件。请在当前浏览器打开邮件链接完成验证。未收到时也请检查垃圾邮件。'
+                  : '你的账号已保存。请使用刚才的邮箱和密码登录，开始记录求职进度。'}
               </p>
-              <p className="text-xs text-muted-foreground">
-                验证链接有时效，请勿转发；关闭当前浏览器或清除 Cookie 可能使验证失效。
-              </p>
+              {registration.verificationRequired && (
+                <p className="text-xs text-muted-foreground">
+                  验证链接有时效，请勿转发；关闭当前浏览器或清除 Cookie 可能使验证失效。
+                </p>
+              )}
               <Button asChild className="w-full">
                 <Link href="/login">返回登录</Link>
               </Button>

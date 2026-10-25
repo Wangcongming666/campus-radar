@@ -40,6 +40,7 @@ import {
 } from '@/lib/calendar-domain';
 import { downloadLocalFile } from '@/lib/local-workspace';
 import { toast } from 'sonner';
+import { isApiMode } from '@/lib/api/workspace-client';
 import { Modal, Field, Pick, useLocal } from './common';
 type Event = CalendarEvent;
 const initial: Event[] = [
@@ -107,12 +108,13 @@ export function CalendarPage() {
   const [events, setEvents] = useLocal('events', initial, isCalendarEvents);
   const conflicts = scheduleConflictIds(events);
   const [view, setView] = useState('月');
-  const [cursor, setCursor] = useState(new Date(2026, 9, 23));
-  const [day, setDay] = useState('2026-10-23');
+  const today = isApiMode() ? new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()) : '2026-10-23';
+  const [cursor, setCursor] = useState(new Date(today + 'T12:00:00'));
+  const [day, setDay] = useState(today);
   const [selected, setSelected] = useState<Event | null>(null);
   const [adding, setAdding] = useState(false);
   const [title, setTitle] = useState('');
-  const [date, setDate] = useState('2026-10-26');
+  const [date, setDate] = useState(isApiMode() ? today : '2026-10-26');
   const [time, setTime] = useState('14:00');
   const [type, setType] = useState('面试');
   const [editing, setEditing] = useState<number | null>(null);
@@ -207,7 +209,7 @@ export function CalendarPage() {
       setCursor(next);
     }
   };
-  function add() {
+  async function add() {
     const candidate: Event = {
       id: editing ?? Date.now(),
       date,
@@ -215,7 +217,7 @@ export function CalendarPage() {
       title: title.trim(),
       companyId,
       type,
-      duration: type === '截止' ? '当日截止' : `${duration} 分钟`,
+      duration: type === '截止' ? '当日截止' : duration,
       applicationId: applicationId || undefined,
       location: location.trim(),
       meetingUrl: meetingUrl.trim(),
@@ -227,14 +229,14 @@ export function CalendarPage() {
       return;
     }
     if (
-      !setEvents((v) =>
+      !await setEvents((v) =>
         editing
           ? v.map((event) => (event.id === editing ? { ...event, ...candidate } : event))
           : [...v, candidate],
       )
     )
       return;
-    notify({
+    await notify({
       category: '面试提醒',
       title: editing ? '日程已调整' : '新的日程已安排',
       content: `${title.trim()} · ${date} ${time}（上海时间）`,
@@ -245,7 +247,7 @@ export function CalendarPage() {
     setCursor(new Date(date + 'T12:00:00'));
     setAdding(false);
     setTitle('');
-    toast.success(editing ? '日程已更新' : '日程已保存到本机');
+    toast.success(editing ? '日程已更新' : isApiMode() ? '日程已保存到数据库' : '日程已保存到本机');
   }
   return (
     <div className="space-y-6">
@@ -395,7 +397,7 @@ export function CalendarPage() {
                   </p>
                   <h3 className="text-sm font-medium leading-6">{e.title}</h3>
                   <div className="mt-2 flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">{e.duration}</span>
+                    <span className="text-xs text-muted-foreground">{e.type === '截止' ? '当日截止' : `${parseInt(e.duration, 10)} 分钟`}</span>
                     <ArrowUpRight className="size-4 text-subtle" />
                   </div>
                 </button>
@@ -433,7 +435,7 @@ export function CalendarPage() {
           )}
           <div className="flex gap-3">
             <Clock className="size-4 text-primary" />
-            {selectedCurrent?.date} {selectedCurrent?.time} · {selectedCurrent?.duration}
+            {selectedCurrent?.date} {selectedCurrent?.time} · {selectedCurrent?.type === '截止' ? '当日截止' : `${parseInt(selectedCurrent?.duration ?? '0', 10)} 分钟`}
           </div>
           <div className="flex gap-3">
             <Video className="size-4 text-primary" />
@@ -462,10 +464,10 @@ export function CalendarPage() {
             </Button>
             <Button
               variant="outline"
-              onClick={() => {
+              onClick={async () => {
                 if (
                   selectedCurrent &&
-                  setEvents((items) =>
+                  await setEvents((items) =>
                     items.map((item) =>
                       item.id === selectedCurrent.id
                         ? { ...item, completed: !item.completed }
@@ -494,10 +496,10 @@ export function CalendarPage() {
       >
         <Button
           variant="destructive"
-          onClick={() => {
+          onClick={async () => {
             if (
               selectedCurrent &&
-              setEvents((items) => items.filter((item) => item.id !== selectedCurrent.id))
+              await setEvents((items) => items.filter((item) => item.id !== selectedCurrent.id))
             ) {
               setDeleting(false);
               setSelected(null);
@@ -512,7 +514,7 @@ export function CalendarPage() {
         open={adding}
         onClose={() => setAdding(false)}
         title={editing ? '编辑日程' : '新建日程'}
-        description="保存在当前浏览器，支持导出系统日历；不会向企业发送消息。"
+        description={isApiMode() ? '日程随账号保存，支持导出系统日历。' : '保存在当前浏览器，支持导出系统日历；不会向企业发送消息。'}
       >
         <form
           className="grid gap-4"
@@ -621,7 +623,7 @@ export function CalendarPage() {
             </p>
           )}
           <Button type="submit" disabled={!title.trim() || !date || !time}>
-            保存到本机日程
+            {isApiMode() ? '保存到账号日程' : '保存到本机日程'}
           </Button>
         </form>
       </Modal>

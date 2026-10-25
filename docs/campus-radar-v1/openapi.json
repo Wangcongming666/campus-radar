@@ -1,9 +1,9 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Campus Radar MVP API",
-    "version": "0.1.0",
-    "description": "MVP contract with implemented public mock/PG reads and protected PG mutations. Default UI remains local mock preview. Live providers require explicit configuration; export/erasure stay unavailable until worker integrations are complete. See 08-delivery-status.md."
+    "title": "Campus Radar API",
+    "version": "0.2.0",
+    "description": "PostgreSQL-backed catalog, accounts and private workspace. API mode never falls back to demonstration records. Local password identity or configured Supabase; same-origin HttpOnly sessions and CSRF. Runtime private files require persistent storage. See 12-api-persistence-implementation.md for contracts and external service boundaries."
   },
   "servers": [
     {
@@ -20,7 +20,7 @@
     "/api/v1/auth/register": {
       "post": {
         "operationId": "auth_register",
-        "summary": "Register and send verification email",
+        "summary": "Create local account, or request configured Supabase verification",
         "tags": [
           "Auth"
         ],
@@ -4107,7 +4107,8 @@
               "enum": [
                 "job",
                 "experience",
-                "company"
+                "company",
+                "question"
               ]
             },
             "description": ""
@@ -4281,7 +4282,8 @@
               "enum": [
                 "job",
                 "experience",
-                "company"
+                "company",
+                "question"
               ]
             }
           },
@@ -4426,7 +4428,8 @@
               "enum": [
                 "job",
                 "experience",
-                "company"
+                "company",
+                "question"
               ]
             }
           },
@@ -4853,6 +4856,797 @@
             "$ref": "#/components/responses/Error"
           }
         }
+      }
+    },
+    "/api/v1/catalog": {
+      "get": {
+        "operationId": "catalog_snapshot",
+        "summary": "Public database catalog for workspace UI",
+        "tags": [
+          "Persistence"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "companies": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
+                        },
+                        "jobs": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
+                        },
+                        "experiences": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
+                        },
+                        "questions": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
+                        },
+                        "chapters": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
+                        }
+                      },
+                      "required": [
+                        "companies",
+                        "jobs",
+                        "experiences",
+                        "questions",
+                        "chapters"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/v1/jobs/import": {
+      "post": {
+        "operationId": "jobs_manual_import",
+        "summary": "Atomically record up to 100 source-linked jobs, explicitly unverified",
+        "tags": [
+          "Persistence"
+        ],
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "inserted": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "inserted"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "jobs": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 100,
+                    "items": {
+                      "type": "object",
+                      "description": "Strict manualImportSchema in server/catalog-import.ts. Company id or name, title, role, cities, recruitmentType, graduationYears, descriptionMd and canonicalUrl required."
+                    }
+                  }
+                },
+                "required": [
+                  "jobs"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/workspace": {
+      "get": {
+        "operationId": "workspace_snapshot",
+        "summary": "Private owner-scoped resource snapshot",
+        "tags": [
+          "Persistence"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "records": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "$ref": "#/components/schemas/WorkspaceRecord"
+                          }
+                        }
+                      },
+                      "required": [
+                        "records"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/workspace/records/{key}": {
+      "parameters": [
+        {
+          "name": "key",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "Strict server workspace-schema.ts allowlist, including scoped dynamic interview keys. Arbitrary keys are rejected."
+        }
+      ],
+      "get": {
+        "operationId": "workspace_record_get",
+        "summary": "Read private record; absent value=null/version=0",
+        "tags": [
+          "Persistence"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/WorkspaceRecord"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "workspace_record_put",
+        "summary": "Conditionally save typed resources in one transaction",
+        "tags": [
+          "Persistence"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/WorkspaceRecord"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceWrite"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/files": {
+      "get": {
+        "operationId": "private_files_list",
+        "summary": "List own file metadata",
+        "tags": [
+          "Persistence"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/PrivateFile"
+                      }
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/files/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "maxLength": 160
+          }
+        }
+      ],
+      "get": {
+        "operationId": "private_file_download",
+        "summary": "Download own original file bytes",
+        "tags": [
+          "Persistence"
+        ],
+        "responses": {
+          "200": {
+            "description": "Attachment bytes; Content-Disposition attachment, nosniff, X-File-Name percent encoded.",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "private_file_upload",
+        "summary": "Upload private original: resumes 10MB, audio 30MB",
+        "tags": [
+          "Persistence"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PrivateFile"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "file"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "private_file_delete",
+        "summary": "Delete own file",
+        "tags": [
+          "Persistence"
+        ],
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/workspace/export": {
+      "get": {
+        "operationId": "workspace_export",
+        "summary": "Export signed native account backup",
+        "tags": [
+          "Persistence"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/NativeAccountBackup"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "includeFiles",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "description": "Include original attachments, max combined 50MB."
+          }
+        ]
+      }
+    },
+    "/api/v1/workspace/import": {
+      "post": {
+        "operationId": "workspace_restore",
+        "summary": "Restore unchanged same-owner signed backup atomically",
+        "tags": [
+          "Persistence"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "backup": {
+                    "$ref": "#/components/schemas/NativeAccountBackup"
+                  },
+                  "expectedVersion": {
+                    "type": "string"
+                  },
+                  "confirm": {
+                    "const": "RESTORE"
+                  }
+                },
+                "required": [
+                  "backup",
+                  "expectedVersion",
+                  "confirm"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/workspace/reset": {
+      "post": {
+        "operationId": "workspace_reset",
+        "summary": "Clear only current owner private records; keep identity and published original content",
+        "tags": [
+          "Persistence"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "expectedVersion": {
+                    "type": "string"
+                  },
+                  "confirm": {
+                    "const": "RESET"
+                  }
+                },
+                "required": [
+                  "expectedVersion",
+                  "confirm"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
       }
     }
   },
@@ -5449,13 +6243,17 @@
             }
           },
           "education": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "enum": [
               "any",
               "associate",
               "bachelor",
               "master",
-              "doctorate"
+              "doctorate",
+              null
             ]
           },
           "recruitmentType": {
@@ -5510,8 +6308,12 @@
             "type": "string"
           },
           "publishedAt": {
-            "type": "string",
-            "format": "date-time"
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Exact timestamp only; null when source supplies date only."
           },
           "verifiedAt": {
             "type": "string",
@@ -5527,6 +6329,28 @@
           },
           "source": {
             "$ref": "#/components/schemas/SourceSummary"
+          },
+          "publishedDate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "publishedPrecision": {
+            "type": "string",
+            "enum": [
+              "exact",
+              "date",
+              "unknown"
+            ]
+          },
+          "collectedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
           }
         },
         "required": [
@@ -5573,13 +6397,17 @@
             }
           },
           "education": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "enum": [
               "any",
               "associate",
               "bachelor",
               "master",
-              "doctorate"
+              "doctorate",
+              null
             ]
           },
           "recruitmentType": {
@@ -5634,8 +6462,12 @@
             "type": "string"
           },
           "publishedAt": {
-            "type": "string",
-            "format": "date-time"
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Exact timestamp only; null when source supplies date only."
           },
           "verifiedAt": {
             "type": "string",
@@ -5658,6 +6490,28 @@
           "canonicalUrl": {
             "type": "string",
             "format": "uri"
+          },
+          "publishedDate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "publishedPrecision": {
+            "type": "string",
+            "enum": [
+              "exact",
+              "date",
+              "unknown"
+            ]
+          },
+          "collectedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
           }
         },
         "required": [
@@ -6710,7 +7564,8 @@
             "enum": [
               "job",
               "experience",
-              "company"
+              "company",
+              "question"
             ]
           },
           "targetId": {
@@ -7120,6 +7975,70 @@
           "finalized"
         ],
         "additionalProperties": false
+      },
+      "WorkspaceRecord": {
+        "type": "object",
+        "properties": {
+          "value": {},
+          "version": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "value",
+          "version"
+        ],
+        "additionalProperties": false
+      },
+      "WorkspaceWrite": {
+        "type": "object",
+        "properties": {
+          "value": {},
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "value",
+          "expectedVersion"
+        ],
+        "additionalProperties": false
+      },
+      "PrivateFile": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "type",
+          "size",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "NativeAccountBackup": {
+        "type": "object",
+        "description": "Owner-bound signed native backup. Keep unchanged. Contains stateVersion and verified private data/file metadata, optional base64 bytes. Exact schema validated by server/account-data.ts; credentials and sessions are excluded."
       }
     },
     "responses": {

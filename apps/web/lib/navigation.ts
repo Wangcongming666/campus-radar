@@ -58,7 +58,7 @@ export const navigation: { label: string; items: NavItem[] }[] = [
       { label: '面经广场', href: '/experiences', icon: MessagesSquare },
       { label: '高频题库', href: '/questions', icon: ListChecks },
       { label: '面试宝典', href: '/handbook', icon: BookOpen },
-      { label: 'AI 模拟面试', href: '/mock', icon: AudioLines },
+      { label: '模拟面试', href: '/mock', icon: AudioLines },
       { label: '简历诊断', href: '/resume-check', icon: FileSearch },
       { label: '求职规划', href: '/planner', icon: Route },
       { label: '薪资行情', href: '/salary', icon: Wallet },

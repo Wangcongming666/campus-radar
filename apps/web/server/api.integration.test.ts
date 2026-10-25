@@ -5,6 +5,9 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { seal, sessionCsrf } from './auth';
 import { hash } from './http';
 import { workerSignature } from './worker';
+import { GET as catalog } from '../app/api/v1/catalog/route';
+import { POST as importJobs } from '../app/api/v1/jobs/import/route';
+import { DELETE as deleteApplication } from '../app/api/v1/applications/[id]/route';
 import { GET as jobs } from '../app/api/v1/jobs/route';
 import { POST as createApplication } from '../app/api/v1/applications/route';
 import {
@@ -306,6 +309,91 @@ describe.skipIf(!enabled)('PostgreSQL API ownership, mutations and signed ingest
     const order =
       await admin`select id from applications where user_id=${ids.user}::uuid and stage='ASSESSMENT' order by sort_key,id`;
     expect(order.map((row) => row.id)).toEqual(cards);
+  });
+  it('imports explicitly supplied jobs without granting crawler permission and exposes UUIDs in the catalog', async () => {
+    const canonicalUrl = 'https://example.invalid/manual-integration/' + randomUUID();
+    let sourceId: string | undefined;
+    try {
+      const imported = await importJobs(
+        req('/api/v1/jobs/import', 'POST', {
+          jobs: [
+            {
+              company: { id: ids.company, name: 'API integration fixture' },
+              title: 'Explicit manual integration record',
+              role: 'frontend',
+              cities: ['北京'],
+              recruitmentType: 'campus',
+              graduationYears: [2027],
+              descriptionMd: 'Disposable local integration record, never production content.',
+              canonicalUrl,
+            },
+          ],
+        }),
+      );
+      expect(imported.status).toBe(201);
+      const records =
+        await admin`select j.id,j.source_id,j.verified_at,s.enabled,s.permission_status,s.entry_mode from jobs j join sources s on s.id=j.source_id where j.canonical_url=${canonicalUrl}`;
+      expect(records).toHaveLength(1);
+      sourceId = records[0].source_id;
+      expect(records[0]).toMatchObject({
+        verified_at: null,
+        enabled: false,
+        permission_status: 'pending',
+        entry_mode: 'manual',
+      });
+      const snapshot = await catalog(req('/api/v1/catalog'));
+      expect(snapshot.status).toBe(200);
+      const value = await snapshot.json();
+      expect(value.data.jobs.find((j: { id: string }) => j.id === records[0].id)).toMatchObject({
+        companyId: ids.company,
+        canonicalUrl,
+      });
+      expect(value.data.jobs.some((j: { id: string }) => j.id === 'job-1')).toBe(false);
+      const created = await createApplication(
+        req('/api/v1/applications', 'POST', { jobId: records[0].id }, randomUUID()),
+      );
+      const application = (await created.json()).data;
+      const patched = await patchApplication(
+        req('/api/v1/applications/' + application.id, 'PATCH', {
+          date: '2026-10-24',
+          notes: 'Durable note',
+          version: 1,
+        }),
+        ctx(application.id),
+      );
+      expect((await patched.json()).data).toMatchObject({
+        date: '2026-10-24',
+        notes: 'Durable note',
+        version: 2,
+      });
+      expect(
+        (
+          await deleteApplication(
+            req('/api/v1/applications/' + application.id, 'DELETE', { version: 1 }),
+            ctx(application.id),
+          )
+        ).status,
+      ).toBe(409);
+      expect(
+        (
+          await deleteApplication(
+            req('/api/v1/applications/' + application.id, 'DELETE', { version: 2 }),
+            ctx(application.id),
+          )
+        ).status,
+      ).toBe(204);
+      expect(
+        (await getApplication(req('/api/v1/applications/' + application.id), ctx(application.id)))
+          .status,
+      ).toBe(404);
+    } finally {
+      if (sourceId) {
+        await admin`delete from application_stage_events where application_id in (select a.id from applications a join jobs j on j.id=a.job_id where j.source_id=${sourceId}::uuid)`;
+        await admin`delete from applications where job_id in (select id from jobs where source_id=${sourceId}::uuid)`;
+        await admin`delete from jobs where source_id=${sourceId}::uuid`;
+        await admin`delete from sources where id=${sourceId}::uuid`;
+      }
+    }
   });
   it('revokes the opaque session on logout', async () => {
     expect((await logout(req('/api/v1/auth/logout', 'POST'))).status).toBe(204);

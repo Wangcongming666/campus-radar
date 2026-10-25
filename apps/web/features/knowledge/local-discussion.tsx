@@ -5,18 +5,27 @@ import { Textarea } from '@/components/ui/textarea';
 import { useKnowledgeLocal } from '@/lib/knowledge-local';
 import { removeDiscussionThread, validateText } from '@/lib/knowledge-domain';
 import { useRadarStore } from '@/lib/store';
+import { useCampus } from '@/components/campus-provider';
 type Comment = { id: string; parent?: string; name: string; content: string };
 export function LocalDiscussion({ id }: { id: string }) {
   const [comments, save, error] = useKnowledgeLocal<Comment[]>(`discussion-${id}`, []);
   const [content, setContent] = useState('');
   const [reply, setReply] = useState<Comment | null>(null);
   const [validation, setValidation] = useState('');
-  const name = useRadarStore((s) => s.userName);
-  function add() {
+  const [saving, setSaving] = useState(false);
+  const localName = useRadarStore((s) => s.userName);
+  const { mode, user } = useCampus();
+  const name = mode === 'api' ? user?.displayName || '同学' : localName;
+  async function add() {
+    if (saving) return;
+    setSaving(true);
     try {
       const text = validateText(content, 1, 1000);
       if (
-        save((v) => [...v, { id: crypto.randomUUID(), parent: reply?.id, name, content: text }])
+        await save((v) => [
+          ...v,
+          { id: crypto.randomUUID(), parent: reply?.id, name, content: text },
+        ])
       ) {
         setContent('');
         setReply(null);
@@ -24,12 +33,18 @@ export function LocalDiscussion({ id }: { id: string }) {
       }
     } catch (e) {
       setValidation((e as Error).message);
+    } finally {
+      setSaving(false);
     }
   }
   return (
     <section className="space-y-4">
       <h2 className="text-sm font-semibold">交流与讨论 · {comments.length}</h2>
-      <p className="text-xs text-subtle">仅保存于本机，不会向其他用户发送。</p>
+      <p className="text-xs text-subtle">
+        {mode === 'api'
+          ? '讨论记录保存到你的账号，不会向其他用户发送消息。'
+          : '仅保存于本机，不会向其他用户发送。'}
+      </p>
       {comments.length ? (
         comments.map((c) => (
           <div
@@ -80,7 +95,9 @@ export function LocalDiscussion({ id }: { id: string }) {
           {error || validation}
         </p>
       )}
-      <Button onClick={add}>保存讨论</Button>
+      <Button disabled={saving} onClick={add}>
+        {saving ? '正在保存…' : '保存讨论'}
+      </Button>
     </section>
   );
 }

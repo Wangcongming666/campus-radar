@@ -16,13 +16,19 @@ import {
 } from './http';
 import { database, transaction, type Db, camel } from './db';
 import type { User } from '../lib/api/contracts';
-const credentialSchema = z.object({
+import { hashPassword, verifyPassword } from './local-auth';
+const supabaseCredentialSchema = z.object({
+  provider: z.literal('supabase').optional(),
   access_token: z.string(),
   refresh_token: z.string(),
   expires_at: z.number(),
   email: z.string(),
   userId: z.string().uuid(),
 });
+const credentialSchema = z.union([
+  supabaseCredentialSchema,
+  z.object({ provider: z.literal('local'), email: z.string().email(), userId: z.string().uuid() }),
+]);
 type Credentials = z.infer<typeof credentialSchema>;
 export interface Session {
   userId: string;
@@ -40,18 +46,17 @@ function key(): Buffer {
 }
 function authConfig() {
   if (process.env.NODE_ENV === 'production' && !process.env.APP_ORIGIN) throw unavailable();
-  if (
-    dataMode() !== 'api' ||
-    !process.env.DATABASE_URL ||
-    !process.env.SUPABASE_URL ||
-    !process.env.SUPABASE_ANON_KEY
-  )
-    throw unavailable();
+  if (dataMode() !== 'api' || !process.env.DATABASE_URL) throw unavailable();
   key();
+  const provider = process.env.AUTH_PROVIDER ?? 'supabase';
+  if (provider === 'local') return { provider } as const;
+  if (provider !== 'supabase' || !process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY)
+    throw unavailable();
   return {
+    provider,
     url: process.env.SUPABASE_URL.replace(/\/$/, ''),
     apiKey: process.env.SUPABASE_ANON_KEY,
-  };
+  } as const;
 }
 export function seal(value: unknown): Buffer {
   const iv = randomBytes(12);
@@ -88,6 +93,8 @@ export async function authenticate(request: Request, write = false): Promise<Ses
     csrf: sessionCsrf(tokenHash),
     credentials: credentialSchema.parse(unseal(row.encrypted_provider_credentials as Buffer)),
   };
+  if (session.credentials.userId !== session.userId)
+    throw new ApiError(401, 'AUTH_REQUIRED', '会话无效，请重新登录。');
   if (write) assertCsrf(request, session.csrf);
   return session;
 }
@@ -97,6 +104,7 @@ export async function rateLimit(sql: Db, bucket: string, max: number, seconds: n
 }
 async function provider(path: string, payload?: unknown, accessToken?: string) {
   const config = authConfig();
+  if (config.provider !== 'supabase') throw unavailable();
   let response: Response;
   try {
     response = await fetch(config.url + '/auth/v1' + path, {
@@ -136,9 +144,8 @@ async function createSession(value: unknown, response: Response) {
   const providerSession = providerSessionSchema.parse(value);
   if (!providerSession.user.email_confirmed_at)
     throw new ApiError(401, 'INVALID_CREDENTIALS', '请先完成邮箱验证。');
-  const token = randomBytes(32).toString('base64url');
-  const tokenHash = hash(token);
   const credentials: Credentials = {
+    provider: 'supabase',
     access_token: providerSession.access_token,
     refresh_token: providerSession.refresh_token,
     expires_at: Date.now() + providerSession.expires_in * 1000,
@@ -149,6 +156,11 @@ async function createSession(value: unknown, response: Response) {
     0,
     40,
   );
+  return persistSession(credentials, displayName, response);
+}
+async function persistSession(credentials: Credentials, displayName: string, response: Response) {
+  const token = randomBytes(32).toString('base64url');
+  const tokenHash = hash(token);
   await database()`select app.create_auth_session(${credentials.userId}::uuid,${displayName},${seal(credentials)},${tokenHash},${new Date(Date.now() + 7 * 86400000)})`;
   setCookie(response, 'session', token, 7 * 86400);
   setCookie(response, 'csrf', '', 0);
@@ -200,43 +212,66 @@ function assertOriginForRead(request: Request) {
 }
 export async function login(request: Request): Promise<Response> {
   assertCsrf(request);
-  authConfig();
+  const config = authConfig();
   const input = await body(
     request,
     z.object({ email: z.string().email().max(254), password: z.string().min(1).max(128) }).strict(),
   );
-  await transaction(null, (sql) => rateLimit(sql, 'login:' + input.email.toLowerCase(), 5, 900));
-  const session = await provider('/token?grant_type=password', input);
+  const email = input.email.trim().toLowerCase();
+  await transaction(null, (sql) => rateLimit(sql, 'login:' + email, 5, 900));
   const response = json({ data: null });
-  const identity = await createSession(session, response);
+  let identity: { userId: string; email: string };
+  if (config.provider === 'local') {
+    const rows = await database()`select * from app.find_local_identity(${email})`;
+    const account = rows[0];
+    if (!(await verifyPassword(input.password, account?.password_hash ?? null)))
+      throw new ApiError(401, 'INVALID_CREDENTIALS', '邮箱或密码无效。');
+    identity = await persistSession(
+      { provider: 'local', email: account.email, userId: account.user_id },
+      account.display_name,
+      response,
+    );
+  } else {
+    const session = await provider('/token?grant_type=password', { ...input, email });
+    identity = await createSession(session, response);
+  }
   const user = await transaction(identity.userId, (sql) =>
     userDto(sql, identity.userId, identity.email),
   );
   const final = json({ data: user });
-  for (const [name, value] of response.headers) final.headers.append(name, value);
+  for (const value of response.headers.getSetCookie()) final.headers.append('Set-Cookie', value);
+  final.headers.set('X-CSRF-Token', response.headers.get('X-CSRF-Token')!);
   return final;
 }
 export async function register(request: Request): Promise<Response> {
   assertCsrf(request);
-  authConfig();
+  const config = authConfig();
   const input = await body(
     request,
     z
       .object({
         email: z.string().email().max(254),
         password: z.string().min(12).max(128),
-        displayName: z.string().min(1).max(40),
+        displayName: z.string().trim().min(1).max(40),
       })
       .strict(),
   );
-  await transaction(null, (sql) => rateLimit(sql, 'register:' + input.email.toLowerCase(), 5, 900));
+  const email = input.email.trim().toLowerCase();
+  await transaction(null, (sql) => rateLimit(sql, 'register:' + email, 5, 900));
+  if (config.provider === 'local') {
+    const passwordHash = await hashPassword(input.password);
+    const rows =
+      await database()`select app.register_local_identity(${email},${input.displayName},${passwordHash}) user_id`;
+    if (!rows[0]?.user_id) throw new ApiError(409, 'ACCOUNT_EXISTS', '该邮箱已注册，请直接登录。');
+    return json({ data: { verificationRequired: false } }, 201);
+  }
   const verifier = randomBytes(48).toString('base64url'),
     state = randomBytes(32).toString('base64url');
   const origin = process.env.APP_ORIGIN ?? new URL(request.url).origin;
   const redirect = new URL('/auth/callback', origin);
   redirect.searchParams.set('state', state);
   await provider('/signup?redirect_to=' + encodeURIComponent(redirect.toString()), {
-    email: input.email,
+    email,
     password: input.password,
     data: { display_name: input.displayName },
     code_challenge: Buffer.from(hash(verifier), 'hex').toString('base64url'),
@@ -254,7 +289,8 @@ export async function register(request: Request): Promise<Response> {
   return response;
 }
 export async function callback(request: Request): Promise<Response> {
-  authConfig();
+  if (authConfig().provider !== 'supabase')
+    throw new ApiError(401, 'INVALID_CREDENTIALS', '此账号服务不使用邮件验证链接。');
   const params = new URL(request.url).searchParams;
   const raw = cookie(request, cookieName('pkce'));
   if (!raw) throw new ApiError(401, 'INVALID_CREDENTIALS', '验证链接已失效。');

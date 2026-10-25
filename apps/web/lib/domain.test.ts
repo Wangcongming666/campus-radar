@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { jobs, initialApplications } from './data';
 import {
   filterJobs,
@@ -94,5 +94,22 @@ describe('pipeline ordering and audit history', () => {
     expect(() => reorderApplication(initialApplications, 'app-1', 'app-5')).toThrow(
       'INVALID_REORDER',
     );
+  });
+});
+
+describe('real catalog deadline clock', () => {
+  it('counts Shanghai calendar days from the current date in API mode', () => {
+    vi.stubEnv('NEXT_PUBLIC_DATA_MODE', 'api');
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-12-31T17:30:00Z'));
+    try {
+      expect(deadlineDays('2027-01-01')).toBe(0);
+      expect(deadlineDays('2027-01-02')).toBe(1);
+      expect(deadlineDays('2026-12-31')).toBe(-1);
+      expect(deadlineDays('invalid')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllEnvs();
+    }
   });
 });

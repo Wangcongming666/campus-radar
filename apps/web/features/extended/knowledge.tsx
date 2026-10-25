@@ -24,6 +24,7 @@ import { assessQuestion, selectPack, type Learning } from '@/lib/knowledge-domai
 import { useKnowledgeLocal, useAllExperiences, downloadKnowledge } from '@/lib/knowledge-local';
 import { StyleSampleInsights } from './growth-style-insights';
 import { Pick, Field, FilterButtons, Modal, Bullet } from './common';
+import { useCampus } from '@/components/campus-provider';
 export type PracticeCollection = {
   id: string;
   title: string;
@@ -31,6 +32,7 @@ export type PracticeCollection = {
   source: string;
 };
 export function QuestionsPage() {
+  const { mode } = useCampus();
   const params = useSearchParams();
   const [query, setQuery] = useState('');
   const [topic, setTopic] = useState(params.get('topic') || '全部知识点');
@@ -103,9 +105,11 @@ export function QuestionsPage() {
           </Button>
         }
       />
-      <DemoNotice>
-        题目与频次为演示样本；练习、回答、自评与错题保存在本机。自评结果不会被当作客观能力评分。
-      </DemoNotice>
+      {mode === 'mock' && (
+        <DemoNotice>
+          题目与频次为演示样本；练习、回答、自评与错题保存在本机。自评结果不会被当作客观能力评分。
+        </DemoNotice>
+      )}
       <div className="grid gap-6 xl:grid-cols-[220px_1fr]">
         <div className="space-y-5">
           <Panel title="知识方向">
@@ -126,7 +130,7 @@ export function QuestionsPage() {
             <p className="text-3xl">
               {mastered} / {questions.length}
             </p>
-            <ProgressBar value={(mastered / questions.length) * 100} />
+            <ProgressBar value={questions.length ? (mastered / questions.length) * 100 : 0} />
             <p className="mt-3 text-xs text-subtle">
               已练习 {Object.values(learning.attempts).reduce((a, b) => a + b, 0)} 次 · 错题{' '}
               {learning.wrong.length} 道
@@ -151,8 +155,8 @@ export function QuestionsPage() {
                 className="mt-3"
                 variant="ghost"
                 size="sm"
-                onClick={() => {
-                  if (saveCollections((v) => v.filter((c) => c.id !== collection)))
+                onClick={async () => {
+                  if (await saveCollections((v) => v.filter((c) => c.id !== collection)))
                     setCollection('全部题单');
                 }}
               >
@@ -200,7 +204,11 @@ export function QuestionsPage() {
                         ? '还没有匹配的已掌握题目'
                         : '没有匹配的题目'
                 }
-                description="完成一次自评，或调整筛选继续学习。"
+                description={
+                  mode === 'api' && !questions.length
+                    ? '真实题目入库后会显示在这里。'
+                    : '完成一次自评，或调整筛选继续学习。'
+                }
                 action={<Button onClick={clear}>查看全部题目</Button>}
               />
             ) : (
@@ -310,8 +318,22 @@ export function QuestionsPage() {
   );
 }
 export function StylePage({ company: slug }: { company: string }) {
+  const { mode } = useCampus();
   const company = getCompany(slug);
   const [active, setActive] = useState('技术一面');
+  if (mode === 'api')
+    return (
+      <EmptyState
+        kind="knowledge"
+        title="暂无真实面试风格情报"
+        description="当前尚未接入可核验的面试维度与频次数据。你可以先整理自己的面试复盘。"
+        action={
+          <Button asChild variant="outline">
+            <Link href="/experiences">浏览面经</Link>
+          </Button>
+        }
+      />
+    );
   const dimensions =
     active === '技术一面'
       ? [
@@ -435,6 +457,7 @@ function StyleCheck({ id, text }: { id: string; text: string }) {
   );
 }
 export function PackPage({ company: slug }: { company: string }) {
+  const { mode } = useCampus();
   const company = getCompany(slug);
   const all = useAllExperiences();
   const [role, setRole] = useState('全部方向');
@@ -453,8 +476,9 @@ export function PackPage({ company: slug }: { company: string }) {
   const relevant = includeExperiences ? pack.experiences : [];
   const related = includeQuestions ? pack.questions : [];
   const collectionId = `pack-${company.id}-${role}-${difficulty}`;
-  function save() {
-    const ok = saveCollections((v) => [
+  async function save() {
+    setStatus('');
+    const ok = await saveCollections((v) => [
       ...v.filter((c) => c.id !== collectionId),
       {
         id: collectionId,
@@ -465,22 +489,37 @@ export function PackPage({ company: slug }: { company: string }) {
     ]);
     if (!ok) return;
     for (const e of relevant)
-      if (!favorites.includes(`experience:${e.id}`)) toggle('experience', e.id);
-    for (const q of related) if (!favorites.includes(`question:${q.id}`)) toggle('question', q.id);
+      if (!favorites.includes(`experience:${e.id}`) && (await toggle('experience', e.id)) === false)
+        return;
+    for (const q of related)
+      if (!favorites.includes(`question:${q.id}`) && (await toggle('question', q.id)) === false)
+        return;
     setStatus(`已入库：${relevant.length} 篇面经收藏、${related.length} 道题目与练习集合`);
   }
+  if (!company.id)
+    return (
+      <EmptyState
+        kind="knowledge"
+        title="未找到这家公司的资料"
+        description="真实企业入库后可查看对应面经包。"
+      />
+    );
   return (
     <div className="space-y-6">
       <PageHeader
         title={`${company.name} · 面经包`}
-        description="围绕目标公司整理本机准备资料。"
+        description={
+          mode === 'api' ? '围绕目标公司整理账号中的准备资料。' : '围绕目标公司整理本机准备资料。'
+        }
         action={
           <Button asChild variant="outline">
             <Link href={`/style/${slug}`}>查看面试风格</Link>
           </Button>
         }
       />
-      <DemoNotice>公司资料与面经均为样本。只展示匹配内容；未收录时会保留空状态。</DemoNotice>
+      {mode === 'mock' && (
+        <DemoNotice>公司资料与面经均为样本。只展示匹配内容；未收录时会保留空状态。</DemoNotice>
+      )}
       <Panel title="配置我的面经包">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="面经包岗位方向">

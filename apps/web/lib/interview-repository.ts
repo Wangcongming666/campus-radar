@@ -1,5 +1,6 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { apiFetch, apiRequest, isApiMode, useWorkspaceRecord } from './api/workspace-client';
 
 export const INTERVIEW_FILE_DATABASE = 'radar-interview-files-v1';
 export type StoredInterviewFile = { id: string; blob: Blob; name: string; updatedAt: string };
@@ -18,6 +19,11 @@ async function openFiles(): Promise<IDBDatabase> {
   });
 }
 export async function saveInterviewFile(id: string, blob: Blob, name: string): Promise<void> {
+  if (isApiMode()) {
+    const form = new FormData(); form.append('file', blob, name); form.append('name', name);
+    await apiRequest('/files/' + encodeURIComponent(id), { method: 'PUT', body: form });
+    return;
+  }
   const db = await openFiles();
   try {
     await new Promise<void>((resolve, reject) => {
@@ -34,6 +40,10 @@ export async function saveInterviewFile(id: string, blob: Blob, name: string): P
   }
 }
 export async function readInterviewFile(id: string): Promise<StoredInterviewFile | undefined> {
+  if (isApiMode()) {
+    const result = await apiFetch('/files/' + encodeURIComponent(id));
+    return { id, blob: await result.blob(), name: result.headers.get('X-File-Name') ? decodeURIComponent(result.headers.get('X-File-Name')!) : id, updatedAt: result.headers.get('Last-Modified') ?? new Date().toISOString() };
+  }
   const db = await openFiles();
   try {
     return await new Promise((resolve, reject) => {
@@ -46,6 +56,7 @@ export async function readInterviewFile(id: string): Promise<StoredInterviewFile
   }
 }
 export async function deleteInterviewFile(id: string): Promise<void> {
+  if (isApiMode()) { await apiRequest('/files/' + encodeURIComponent(id), { method: 'DELETE' }); return; }
   const db = await openFiles();
   try {
     await new Promise<void>((resolve, reject) => {
@@ -60,6 +71,13 @@ export async function deleteInterviewFile(id: string): Promise<void> {
   }
 }
 export async function listInterviewFiles(): Promise<StoredInterviewFile[]> {
+  if (isApiMode()) {
+    const response = await apiRequest<{ data: { id: string; name: string; updatedAt: string }[] }>('/files');
+    return Promise.all(response.data.map(async (metadata) => {
+      const result = await apiFetch('/files/' + encodeURIComponent(metadata.id));
+      return { ...metadata, blob: await result.blob() };
+    }));
+  }
   const db = await openFiles();
   try {
     return await new Promise((resolve, reject) => {
@@ -72,6 +90,7 @@ export async function listInterviewFiles(): Promise<StoredInterviewFile[]> {
   }
 }
 export async function putInterviewFile(record: StoredInterviewFile): Promise<void> {
+  if (isApiMode()) return saveInterviewFile(record.id, record.blob, record.name);
   const db = await openFiles();
   try {
     await new Promise<void>((resolve, reject) => {
@@ -86,6 +105,10 @@ export async function putInterviewFile(record: StoredInterviewFile): Promise<voi
   }
 }
 export async function clearInterviewFiles(): Promise<void> {
+  if (isApiMode()) {
+    const result = await apiRequest<{ data: { id: string }[] }>('/files');
+    await Promise.all(result.data.map((file) => deleteInterviewFile(file.id))); return;
+  }
   const db = await openFiles();
   try {
     await new Promise<void>((resolve, reject) => {
@@ -105,6 +128,7 @@ export function useInterviewLocal<T>(
   initial: T,
   validate?: (value: unknown) => value is T,
 ) {
+  const remote = useWorkspaceRecord(key, initial);
   const initialRef = useRef(initial);
   initialRef.current = initial;
   const validatorRef = useRef(validate);
@@ -115,6 +139,7 @@ export function useInterviewLocal<T>(
   const [error, setError] = useState('');
   const storageKey = `radar-extended-${key}`;
   useEffect(() => {
+    if (isApiMode()) { setReady(true); return; }
     setReady(false);
     const load = () => {
       try {
@@ -159,7 +184,8 @@ export function useInterviewLocal<T>(
     };
   }, [storageKey, key]);
   const save = useCallback(
-    (update: T | ((previous: T) => T)): boolean => {
+    async (update: T | ((previous: T) => T)): Promise<boolean> => {
+      if (isApiMode()) return remote.save(update);
       const next =
         typeof update === 'function' ? (update as (previous: T) => T)(current.current) : update;
       try {
@@ -178,7 +204,7 @@ export function useInterviewLocal<T>(
     },
     [storageKey],
   );
-  return { value, save, ready, error };
+  return { value: isApiMode() ? remote.value : value, save, ready: isApiMode() ? remote.ready : ready, error: isApiMode() ? remote.error : error };
 }
 
 export function downloadInterviewBlob(blob: Blob, name: string) {

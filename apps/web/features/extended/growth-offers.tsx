@@ -1,5 +1,7 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { isApiMode, subscribeWorkspace, workspaceOwner } from '@/lib/api/workspace-client';
+import { createCoalescedDraftWriter, type DraftSaveStatus } from '@/lib/coalesced-draft-writer';
 import { PageHeader, Panel, DemoNotice, SmallTag, EmptyState } from '@/components/shared';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,6 +30,19 @@ const defaults: Dimension[] = [
   { id: 'life', name: '生活平衡', weight: 15 },
   { id: 'city', name: '城市偏好', weight: 10 },
 ];
+const dimensionDrafts = new Map<string, Dimension[]>();
+let dimensionOwner = workspaceOwner();
+let dimensionGeneration = 0;
+subscribeWorkspace(() => {
+  const owner = workspaceOwner();
+  if (owner !== dimensionOwner) {
+    dimensionOwner = owner;
+    dimensionGeneration++;
+    dimensionDrafts.clear();
+  }
+});
+const dimensionScope = () =>
+  isApiMode() ? (workspaceOwner() ? `${workspaceOwner()}:${dimensionGeneration}` : null) : 'local';
 const annual = annualCash;
 const csv = (s: string | number) =>
   `"${String(s)
@@ -35,11 +50,63 @@ const csv = (s: string | number) =>
     .replaceAll('"', '""')}"`;
 export function OfferComparePage() {
   const [offers, setOffers] = useValidatedArray<Offer>('offers-v2', offerSchema, []);
-  const [dimensions, setDimensions] = useValidatedArray<Dimension>(
+  const [savedDimensions, persistDimensions] = useValidatedArray<Dimension>(
     'offer-dimensions-v2',
     dimensionSchema,
     defaults,
   );
+  const scope = useRef(dimensionScope());
+  const [editedDimensions, setEditedDimensions] = useState<Dimension[] | null>(() =>
+    scope.current ? (dimensionDrafts.get(scope.current) ?? null) : null,
+  );
+  const dimensions = editedDimensions ?? savedDimensions;
+  const dimensionsRef = useRef(dimensions);
+  dimensionsRef.current = dimensions;
+  const active = useRef(true);
+  const persistRef = useRef(persistDimensions);
+  persistRef.current = persistDimensions;
+  const [dimensionSaveStatus, setDimensionSaveStatus] = useState<DraftSaveStatus>(
+    editedDimensions ? 'pending' : 'saved',
+  );
+  const [dimensionWriter] = useState(() =>
+    createCoalescedDraftWriter({
+      save: (value: Dimension[]) =>
+        scope.current === dimensionScope() ? persistRef.current(value) : Promise.resolve(false),
+      scope: () => (scope.current === dimensionScope() ? scope.current : null),
+      onStatus: setDimensionSaveStatus,
+      onConfirmed: (value) => {
+        if (scope.current && dimensionDrafts.get(scope.current) === value)
+          dimensionDrafts.delete(scope.current);
+        if (active.current) setEditedDimensions((current) => (current === value ? null : current));
+      },
+      initial: editedDimensions ?? undefined,
+      delay: isApiMode() ? 800 : 0,
+    }),
+  );
+  useEffect(() => {
+    active.current = true;
+    dimensionWriter.start();
+    const warn = (event: BeforeUnloadEvent) => {
+      if (dimensionWriter.dirty()) {
+        event.preventDefault();
+        event.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => {
+      active.current = false;
+      dimensionWriter.stop();
+      window.removeEventListener('beforeunload', warn);
+    };
+  }, [dimensionWriter]);
+  function editDimensions(update: Dimension[] | ((current: Dimension[]) => Dimension[])) {
+    const next = typeof update === 'function' ? update(dimensionsRef.current) : update;
+    dimensionsRef.current = next;
+    setEditedDimensions(next);
+    if (scope.current && scope.current === dimensionScope())
+      dimensionDrafts.set(scope.current, next);
+    dimensionWriter.edit(next);
+  }
   const [draft, setDraft] = useState<Offer | null>(null);
   const [error, setError] = useState('');
   const [dimensionName, setDimensionName] = useState('');
@@ -69,7 +136,7 @@ export function OfferComparePage() {
     });
     setError('');
   }
-  function save() {
+  async function save() {
     if (
       !draft?.company.trim() ||
       !draft.title.trim() ||
@@ -95,11 +162,11 @@ export function OfferComparePage() {
       id: draft.id || crypto.randomUUID(),
     };
     if (
-      !setOffers((xs) =>
+      !(await setOffers((xs) =>
         xs.some((x) => x.id === item.id)
           ? xs.map((x) => (x.id === item.id ? item : x))
           : [...xs, item],
-      )
+      ))
     )
       return;
     setDraft(null);
@@ -150,7 +217,7 @@ export function OfferComparePage() {
         }
       />
       <DemoNotice>
-        本地决策工具，不预测就业结果。保证年薪 = 月薪 × 月数 +
+        决策工具，不预测就业结果。保证年薪 = 月薪 × 月数 +
         保证奖金；薪酬得分按当前最高年薪归一化，其他维度由你打分。排名是偏好的计算结果。
       </DemoNotice>
       <Panel
@@ -167,16 +234,20 @@ export function OfferComparePage() {
                   maxLength={30}
                   disabled={d.id === 'pay'}
                   onChange={(e) =>
-                    setDimensions((xs) =>
+                    editDimensions((xs) =>
                       xs.map((x) => (x.id === d.id ? { ...x, name: e.target.value } : x)),
                     )
                   }
+                  onBlur={() => dimensionWriter.flush()}
                 />
                 {d.id !== 'pay' && (
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={() => setDimensions((xs) => xs.filter((x) => x.id !== d.id))}
+                    onClick={() => {
+                      editDimensions((xs) => xs.filter((x) => x.id !== d.id));
+                      void dimensionWriter.flush();
+                    }}
                   >
                     删除
                   </Button>
@@ -190,10 +261,11 @@ export function OfferComparePage() {
                   value={d.weight}
                   onChange={(e) => {
                     const value = Math.max(0, Math.min(100, Number(e.target.value) || 0));
-                    setDimensions((xs) =>
+                    editDimensions((xs) =>
                       xs.map((x) => (x.id === d.id ? { ...x, weight: value } : x)),
                     );
                   }}
+                  onBlur={() => dimensionWriter.flush()}
                 />
               </Field>
               <p className="text-xs text-muted-foreground">
@@ -213,23 +285,48 @@ export function OfferComparePage() {
           />
           <Button
             variant="outline"
-            onClick={() => {
+            onClick={async () => {
               const name = dimensionName.trim();
               if (!name || dimensions.some((d) => d.name === name)) {
                 setError('维度名称不能为空或重复');
                 return;
               }
               const id = crypto.randomUUID();
-              if (!setDimensions((xs) => [...xs, { id, name, weight: 10 }])) return;
-              setOffers((xs) => xs.map((o) => ({ ...o, scores: { ...o.scores, [id]: 50 } })));
+              editDimensions((xs) => [...xs, { id, name, weight: 10 }]);
+              if (!(await dimensionWriter.flush())) return;
               setDimensionName('');
               setError('');
             }}
           >
             添加维度
           </Button>
-          <Button variant="ghost" onClick={() => setDimensions(defaults)}>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              editDimensions(defaults);
+              void dimensionWriter.flush();
+            }}
+          >
             恢复默认权重与维度
+          </Button>
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <p role="status" aria-live="polite" className="text-xs text-muted-foreground">
+            {dimensionSaveStatus === 'saved'
+              ? '维度与权重无待保存修改'
+              : dimensionSaveStatus === 'saving'
+                ? '正在保存维度与权重…'
+                : dimensionSaveStatus === 'failed'
+                  ? '维度与权重尚未保存，当前修改已保留，请重试。'
+                  : '维度与权重有未保存修改，计算结果已实时更新。'}
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={dimensionSaveStatus === 'saved' || dimensionSaveStatus === 'saving'}
+            onClick={() => dimensionWriter.flush()}
+          >
+            {dimensionSaveStatus === 'failed' ? '重试保存维度' : '保存维度与权重'}
           </Button>
         </div>
         {!weightSum && (
@@ -336,9 +433,9 @@ export function OfferComparePage() {
       >
         <form
           className="grid gap-4"
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault();
-            save();
+            await save();
           }}
         >
           {draft && (

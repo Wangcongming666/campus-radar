@@ -12,7 +12,15 @@ const stage = z.enum([
 ]);
 export const applicationSchema = z.object({
   id: z.string().min(1).max(120),
-  jobId: z.string().refine((id) => jobs.some((job) => job.id === id)),
+  jobId: z
+    .string()
+    .min(1)
+    .max(120)
+    .refine(
+      (id) =>
+        z.uuid().safeParse(id).success ||
+        (process.env.NEXT_PUBLIC_DATA_MODE !== 'api' && jobs.some((job) => job.id === id)),
+    ),
   stage,
   notes: z.string().max(50_000),
   date: z.string().max(50),

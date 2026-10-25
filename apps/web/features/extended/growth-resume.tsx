@@ -1,6 +1,8 @@
 'use client';
-import { useState } from 'react';
-import { PageHeader, Panel, DemoNotice, SmallTag } from '@/components/shared';
+import { useEffect, useRef, useState } from 'react';
+import { isApiMode, subscribeWorkspace, workspaceOwner } from '@/lib/api/workspace-client';
+import Link from 'next/link';
+import { PageHeader, Panel, DemoNotice, SmallTag, EmptyState } from '@/components/shared';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { jobs, getCompany } from '@/lib/data';
@@ -10,21 +12,90 @@ import { downloadText } from '@/lib/growth-local';
 import { useValidatedArray } from './growth-local-state';
 import { resumeRecordSchema } from '@/lib/growth-storage';
 import { Field, useLocal } from './common';
+import { createCoalescedDraftWriter, type DraftSaveStatus } from '@/lib/coalesced-draft-writer';
+// Session-only drafts survive route changes. Account changes erase them. No
+// browser storage is used for private API content.
+const resumeDrafts = new Map<string, string>();
+let draftOwner = workspaceOwner();
+let draftGeneration = 0;
+subscribeWorkspace(() => {
+  const owner = workspaceOwner();
+  if (owner !== draftOwner) {
+    draftOwner = owner;
+    draftGeneration++;
+    resumeDrafts.clear();
+  }
+});
+const resumeScope = () =>
+  isApiMode() ? (workspaceOwner() ? `${workspaceOwner()}:${draftGeneration}` : null) : 'local';
+
 const sample =
   '教育：2027届计算机本科\n技能：JavaScript、React、TypeScript\n项目：协作文档平台\n参与编辑器开发，负责实现 React 组件与 HTTP 接口联调。\n优化页面加载，首屏耗时从 3 秒降低至 2 秒。';
 export function ResumeCheckPage() {
   const [library] = useValidatedArray<ResumeVersion>('resume-library-v2', resumeRecordSchema, []);
-  const [text, setText] = useLocal('diagnosis-text-v2', '');
-  const [jobId, setJobId] = useLocal('diagnosis-target-v2', jobs[0].id);
+  const [savedText, persistText] = useLocal('diagnosis-text-v2', '');
+  const scope = useRef(resumeScope());
+  const [editedText, setEditedText] = useState<string | null>(() => {
+    const draft = scope.current ? resumeDrafts.get(scope.current) : undefined;
+    return draft !== undefined && draft !== savedText ? draft : null;
+  });
+  const [saveStatus, setSaveStatus] = useState<DraftSaveStatus>(
+    editedText === null ? 'saved' : 'pending',
+  );
+  const active = useRef(true);
+  const persistRef = useRef(persistText);
+  persistRef.current = persistText;
+  const [writer] = useState(() =>
+    createCoalescedDraftWriter({
+      save: (value: string) =>
+        scope.current === resumeScope() ? persistRef.current(value) : Promise.resolve(false),
+      scope: () => (scope.current === resumeScope() ? scope.current : null),
+      onStatus: setSaveStatus,
+      onConfirmed: (value) => {
+        if (scope.current && resumeDrafts.get(scope.current) === value)
+          resumeDrafts.delete(scope.current);
+        if (active.current) setEditedText((current) => (current === value ? null : current));
+      },
+      initial: editedText ?? undefined,
+      delay: isApiMode() ? 800 : 0,
+    }),
+  );
+  useEffect(() => {
+    active.current = true;
+    writer.start();
+    const warn = (event: BeforeUnloadEvent) => {
+      if (writer.dirty()) {
+        event.preventDefault();
+        event.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => {
+      active.current = false;
+      writer.stop();
+      window.removeEventListener('beforeunload', warn);
+    };
+  }, [writer]);
+  const text = editedText ?? savedText;
+  const [savedJobId, persistJobId] = useLocal('diagnosis-target-v2', jobs[0]?.id ?? '');
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const jobId = selectedJobId ?? savedJobId;
   const [report, setReport] = useState<ReturnType<typeof diagnoseResume> | null>(null);
   const [error, setError] = useState('');
   const [applied, setApplied] = useState<number[]>([]);
-  const job = jobs.find((x) => x.id === jobId) ?? jobs[0];
+  const job = jobs.find((x) => x.id === jobId);
   const invalidate = () => {
     setReport(null);
     setApplied([]);
     setError('');
   };
+  function setText(value: string | ((current: string) => string)) {
+    const next = typeof value === 'function' ? value(text) : value;
+    setEditedText(next);
+    invalidate();
+    if (scope.current && scope.current === resumeScope()) resumeDrafts.set(scope.current, next);
+    writer.edit(next);
+  }
   return (
     <div className="space-y-6">
       <PageHeader
@@ -38,7 +109,7 @@ export function ResumeCheckPage() {
       <div className="grid gap-6 xl:grid-cols-2">
         <Panel
           title="输入简历文本"
-          description="文本仅保存在当前浏览器。支持读取 UTF-8 的 .txt 或 .md 文件。"
+          description="支持读取简历库中实际上传的文本，或导入 UTF-8 的 .txt、.md 文件。"
         >
           <div className="grid gap-4">
             {library.length > 0 && (
@@ -46,14 +117,14 @@ export function ResumeCheckPage() {
                 <select
                   className="h-10 rounded-md border bg-background px-2 text-sm"
                   defaultValue=""
-                  onChange={(e) => {
+                  onChange={async (e) => {
                     const resume = library.find((r) => r.id === e.target.value);
-                    if (resume && setText(resume.text)) invalidate();
+                    if (resume) setText(resume.text);
                   }}
                 >
                   <option value="">选择已保存简历版本</option>
                   {library.map((r) => (
-                    <option value={r.id} key={r.id}>
+                    <option value={r.id} key={r.id} disabled={!r.text.trim()}>
                       {r.name} · v{r.version}
                       {r.text ? '' : '（无可读文本）'}
                     </option>
@@ -68,11 +139,29 @@ export function ResumeCheckPage() {
                 maxLength={30000}
                 onChange={(e) => {
                   setText(e.target.value);
-                  invalidate();
                 }}
                 placeholder="粘贴教育、技能、项目与经历…"
               />
             </Field>
+            <div className="flex flex-wrap items-center gap-3">
+              <p role="status" aria-live="polite" className="text-xs text-muted-foreground">
+                {saveStatus === 'saved'
+                  ? '文本无待保存修改'
+                  : saveStatus === 'saving'
+                    ? '正在保存文本…'
+                    : saveStatus === 'failed'
+                      ? '文本尚未保存，当前编辑已保留，请重试。'
+                      : '文本有未保存修改，停止输入后自动保存。'}
+              </p>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={saveStatus === 'saved' || saveStatus === 'saving'}
+                onClick={() => writer.flush()}
+              >
+                {saveStatus === 'failed' ? '重试保存文本' : '保存当前文本'}
+              </Button>
+            </div>
             <Field label="读取文本文件">
               <input
                 type="file"
@@ -91,7 +180,6 @@ export function ResumeCheckPage() {
                       return;
                     }
                     setText(content);
-                    invalidate();
                   } catch {
                     setError('文件读取失败，请重新选择或粘贴文本');
                   }
@@ -102,11 +190,15 @@ export function ResumeCheckPage() {
               <select
                 className="h-10 rounded-md border bg-background px-2 text-sm"
                 value={jobId}
-                onChange={(e) => {
-                  setJobId(e.target.value);
+                disabled={!jobs.length}
+                onChange={async (e) => {
+                  const value = e.target.value;
+                  setSelectedJobId(value);
                   invalidate();
+                  await persistJobId(value);
                 }}
               >
+                <option value="">请选择真实目标岗位</option>
                 {jobs.map((j) => (
                   <option key={j.id} value={j.id}>
                     {getCompany(j.companyId).name} · {j.title}
@@ -114,18 +206,31 @@ export function ResumeCheckPage() {
                 ))}
               </select>
             </Field>
+            {!jobs.length && (
+              <EmptyState
+                kind="jobs"
+                title="暂无可诊断的真实岗位"
+                description="先在岗位页导入真实招聘信息，再返回选择目标岗位。"
+                action={
+                  <Button asChild variant="outline">
+                    <Link href="/jobs">前往岗位库</Link>
+                  </Button>
+                }
+              />
+            )}
             <div className="flex flex-wrap gap-2">
+              {process.env.NEXT_PUBLIC_DATA_MODE !== 'api' && (
+                <Button variant="outline" onClick={() => setText(sample)}>
+                  载入虚构样例
+                </Button>
+              )}
               <Button
-                variant="outline"
+                disabled={!job}
                 onClick={() => {
-                  setText(sample);
-                  invalidate();
-                }}
-              >
-                载入虚构样例
-              </Button>
-              <Button
-                onClick={() => {
+                  if (!job) {
+                    setError('请先选择已收录的真实岗位');
+                    return;
+                  }
                   if (text.trim().length < 20) {
                     setError('请至少输入 20 字的简历经历');
                     return;
@@ -203,9 +308,13 @@ export function ResumeCheckPage() {
                     size="sm"
                     variant="outline"
                     disabled={applied.includes(i)}
-                    onClick={() => {
-                      setText((v) => v.replace(s.original, s.replacement));
-                      setApplied((v) => [...v, i]);
+                    onClick={async () => {
+                      const next = text.replace(s.original, s.replacement);
+                      setEditedText(next);
+                      if (scope.current && scope.current === resumeScope())
+                        resumeDrafts.set(scope.current, next);
+                      writer.edit(next);
+                      if (await writer.flush()) setApplied((v) => [...v, i]);
                     }}
                   >
                     {applied.includes(i) ? '已应用，重新诊断可更新得分' : '应用此条建议'}

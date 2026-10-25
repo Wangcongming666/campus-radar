@@ -5,3 +5,5 @@ export const GET = route(async (request, context) =>
   applicationDetail(request, (await context.params).id),
 );
 export const PATCH = GET;
+
+export const DELETE = GET;

@@ -67,6 +67,8 @@ import { ApiAccountPage } from './api-account-page';
 import { useAllExperiences } from '@/lib/knowledge-local';
 import type { Experience } from '@/lib/data';
 import { LocalDataTools } from './local-data-tools';
+import { CloudDataTools } from './cloud-data-tools';
+import type { User } from '@/lib/api/contracts';
 import { clearInterviewFiles } from '@/lib/interview-repository';
 import { parseSavedProfile } from '@/lib/local-matching';
 type DemoProfile = {
@@ -544,16 +546,25 @@ export function FavoritesPage() {
     if (label) setTab(label);
   }, []);
   const checked = items.length > 0 && items.every((x) => selected.includes(x.key));
-  function remove() {
-    selected.forEach((key) => {
-      if (favorites.includes(key)) {
+  const [removing, setRemoving] = useState(false);
+  async function remove() {
+    if (removing) return;
+    setRemoving(true);
+    const failed: string[] = [];
+    try {
+      for (const key of selected) {
+        if (!useRadarStore.getState().favorites.includes(key)) continue;
         const [type, id] = key.split(':');
-        toggle(type, id);
+        if (!(await toggle(type, id))) failed.push(key);
       }
-    });
-    setSelected([]);
-    setConfirm(false);
-    toast.success('所选收藏已移除');
+      setSelected(failed);
+      if (!failed.length) {
+        setConfirm(false);
+        toast.success('所选收藏已移除');
+      }
+    } finally {
+      setRemoving(false);
+    }
   }
   return (
     <>
@@ -694,7 +705,7 @@ export function FavoritesPage() {
             <Button variant="outline" onClick={() => setConfirm(false)}>
               保留收藏
             </Button>
-            <Button variant="destructive" onClick={remove}>
+            <Button variant="destructive" disabled={removing} onClick={remove}>
               移除所选收藏
             </Button>
           </DialogFooter>
@@ -760,6 +771,7 @@ export const demoNotifications = [
   },
 ];
 export function NotificationsPage() {
+  const { mode } = useCampus();
   const localNotifications = useRadarStore((s) => s.notifications);
   const removeNotification = useRadarStore((s) => s.removeNotification);
   const notes = useRadarStore((s) => s.notes);
@@ -774,13 +786,14 @@ export function NotificationsPage() {
   };
   const allNotifications = [
     ...localNotifications.map((notice) => ({ ...notice, icon: icons[notice.category] })),
-    ...demoNotifications,
+    ...(mode === 'api' ? [] : demoNotifications),
   ].filter((notice) => !hidden.includes(notice.id));
   const [category, setCategory] = useState('全部消息');
   const [onlyUnread, setOnlyUnread] = useState(false);
   const unread = allNotifications.filter((n) => !read.includes(n.id)).length;
-  function mark(ids: string[]) {
-    setNote('notifications-read', JSON.stringify([...new Set([...read, ...ids])]));
+  async function mark(ids: string[]) {
+    const latest = parseJson<string[]>(useRadarStore.getState().notes['notifications-read'], []);
+    return setNote('notifications-read', JSON.stringify([...new Set([...latest, ...ids])]));
   }
   const list = allNotifications.filter(
     (n) =>
@@ -801,9 +814,9 @@ export function NotificationsPage() {
             variant="outline"
             size="sm"
             disabled={!unread}
-            onClick={() => {
-              mark(allNotifications.map((n) => n.id));
-              toast.success('所有消息已标记为已读');
+            onClick={async () => {
+              if (await mark(allNotifications.map((n) => n.id)))
+                toast.success('所有消息已标记为已读');
             }}
           >
             <CheckCheck size={14} />
@@ -817,7 +830,11 @@ export function NotificationsPage() {
         onChange={setCategory}
       />
       <div className="flex justify-between items-center mb-5">
-        <p className="text-[10px] text-subtle">本机操作提醒与预置样本，不会发送邮件或外部推送。</p>
+        <p className="text-[10px] text-subtle">
+          {mode === 'api'
+            ? '显示本账户保存的站内通知；邮件和外部推送尚未接入。'
+            : '本机操作提醒与预置样本，不会发送邮件或外部推送。'}
+        </p>
         <label className={s.selectAll}>
           <input
             type="checkbox"
@@ -845,9 +862,10 @@ export function NotificationsPage() {
                   <button
                     aria-label={`删除通知 ${n.title}`}
                     className="text-subtle hover:text-destructive"
-                    onClick={() => {
-                      if (n.id.startsWith('notice-local-')) removeNotification(n.id);
-                      else setNote('notifications-hidden', JSON.stringify([...hidden, n.id]));
+                    onClick={async () => {
+                      if (mode === 'api' || n.id.startsWith('notice-local-'))
+                        await removeNotification(n.id);
+                      else await setNote('notifications-hidden', JSON.stringify([...hidden, n.id]));
                     }}
                   >
                     <Trash2 size={13} />
@@ -857,7 +875,10 @@ export function NotificationsPage() {
                 <div className={s.notificationFoot}>
                   <Link
                     href={n.href}
-                    onClick={() => mark([n.id])}
+                    onClick={async (event) => {
+                      event.preventDefault();
+                      if (await mark([n.id])) window.location.assign(n.href);
+                    }}
                     className="inline-flex items-center gap-1"
                   >
                     {n.action} <ArrowUpRight size={11} />
@@ -865,7 +886,9 @@ export function NotificationsPage() {
                   <small>{n.date}</small>
                   {!read.includes(n.id) ? (
                     <button
-                      onClick={() => mark([n.id])}
+                      onClick={async () => {
+                        await mark([n.id]);
+                      }}
                       className="ml-auto text-[9px] text-subtle hover:text-primary"
                     >
                       标为已读
@@ -885,7 +908,11 @@ export function NotificationsPage() {
         <EmptyState
           kind="notifications"
           title="重要的消息，都已经看过了"
-          description="暂时没有新的演示提醒。去发现一个新机会，或者继续今天的学习。"
+          description={
+            mode === 'api'
+              ? '暂无符合条件的站内通知。'
+              : '暂时没有新的演示提醒。去发现一个新机会，或者继续今天的学习。'
+          }
           action={
             <Button size="sm" variant="outline" onClick={() => setOnlyUnread(false)}>
               查看全部消息
@@ -894,7 +921,11 @@ export function NotificationsPage() {
         />
       )}
       <div className="mt-6">
-        <DemoNotice>已读状态保存在当前浏览器。提醒中的日期与安排均为演示数据。</DemoNotice>
+        <DemoNotice>
+          {mode === 'api'
+            ? '通知与已读状态保存到当前账号。'
+            : '已读状态保存在当前浏览器。提醒中的日期与安排均为演示数据。'}
+        </DemoNotice>
       </div>
     </>
   );
@@ -922,6 +953,16 @@ function Toggle({
   );
 }
 export function SettingsPage() {
+  const { mode, user } = useCampus();
+  return mode === 'api' ? (
+    user ? (
+      <ApiSettingsPage key={user.id} user={user} />
+    ) : null
+  ) : (
+    <DemoSettingsPage />
+  );
+}
+function DemoSettingsPage() {
   const store = useRadarStore();
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
@@ -1187,6 +1228,209 @@ export function SettingsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </>
+  );
+}
+
+function ApiSettingsPage({ user }: { user: User }) {
+  const campus = useCampus();
+  const store = useRadarStore();
+  const { setTheme } = useTheme();
+  const [name, setName] = useState(user.displayName);
+  const [school, setSchool] = useState(user.school ?? '');
+  const [year, setYear] = useState(user.graduationYear?.toString() ?? '');
+  const [education, setEducation] = useState(user.education ?? 'any');
+  const [roles, setRoles] = useState(user.preferences.roles.join('，'));
+  const [cities, setCities] = useState(user.preferences.cities.join('，'));
+  const [error, setError] = useState('');
+  const [savingPreference, setSavingPreference] = useState(false);
+  const preferences = parseJson<Record<string, boolean>>(store.notes['account-preferences'], {
+    deadline: true,
+    interview: true,
+    learning: false,
+  });
+  async function save() {
+    setError('');
+    const list = (value: string) => [
+      ...new Set(
+        value
+          .split(/[,，、\n]/)
+          .map((x) => x.trim())
+          .filter(Boolean),
+      ),
+    ];
+    const actualRoles = list(roles),
+      actualCities = list(cities);
+    if (
+      !name.trim() ||
+      name.trim().length > 40 ||
+      (year && (!/^20\d{2}$/.test(year) || Number(year) < 2020 || Number(year) > 2100))
+    ) {
+      setError('请填写有效昵称与毕业年份（2020–2100）。');
+      return;
+    }
+    try {
+      await campus.updateProfile({
+        displayName: name.trim(),
+        school: school.trim() || null,
+        graduationYear: year ? Number(year) : null,
+        education,
+        preferences: {
+          ...user.preferences,
+          roles: actualRoles,
+          cities: actualCities,
+          graduationYear: year ? Number(year) : null,
+        },
+      });
+      toast.success('资料与求职偏好已保存到账号');
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : '保存失败，请重试。');
+    }
+  }
+  return (
+    <>
+      <PageHeader title="账号设置" description="管理账号资料、外观、提醒偏好与私有数据。" />
+      <div className="space-y-6">
+        <section id="profile">
+          <Panel title="个人资料与求职偏好" description="保存到当前已登录账号。">
+            <div className={s.fieldGrid}>
+              <label className={s.field}>
+                昵称
+                <Input maxLength={40} value={name} onChange={(e) => setName(e.target.value)} />
+              </label>
+              <label className={s.field}>
+                学校（选填）
+                <Input maxLength={120} value={school} onChange={(e) => setSchool(e.target.value)} />
+              </label>
+              <label className={s.field}>
+                毕业年份（选填）
+                <Input
+                  type="number"
+                  min={2020}
+                  max={2100}
+                  value={year}
+                  onChange={(e) => setYear(e.target.value)}
+                />
+              </label>
+              <label className={s.field}>
+                学历
+                <select
+                  className={s.nativeSelect}
+                  value={education}
+                  onChange={(e) => setEducation(e.target.value as typeof education)}
+                >
+                  {Object.entries({
+                    any: '未设置',
+                    associate: '专科',
+                    bachelor: '本科',
+                    master: '硕士',
+                    doctorate: '博士',
+                  }).map(([id, label]) => (
+                    <option key={id} value={id}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className={s.field}>
+                意向方向（逗号分隔）
+                <Input value={roles} onChange={(e) => setRoles(e.target.value)} />
+              </label>
+              <label className={s.field}>
+                意向城市（逗号分隔）
+                <Input value={cities} onChange={(e) => setCities(e.target.value)} />
+              </label>
+            </div>
+            {error && (
+              <p role="alert" className="field-error mt-3">
+                {error}
+              </p>
+            )}
+            <Button className="mt-5" disabled={campus.busy} onClick={save}>
+              保存资料与偏好
+            </Button>
+          </Panel>
+        </section>
+        <section id="appearance">
+          <Panel title="外观设置" description="外观偏好保存到账号，登录后自动应用。">
+            <div className="flex flex-wrap gap-3">
+              {(
+                [
+                  ['dark', '深色模式'],
+                  ['light', '浅色模式'],
+                  ['system', '跟随系统'],
+                ] as const
+              ).map(([theme, label]) => (
+                <Button
+                  key={theme}
+                  variant={user.theme === theme ? 'default' : 'outline'}
+                  disabled={campus.busy}
+                  aria-pressed={user.theme === theme}
+                  onClick={async () => {
+                    try {
+                      await campus.updateProfile({ theme });
+                      setTheme(theme);
+                      toast.success('外观偏好已保存到账号');
+                    } catch (failure) {
+                      toast.error(failure instanceof Error ? failure.message : '外观保存失败');
+                    }
+                  }}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
+          </Panel>
+        </section>
+        <section id="preferences">
+          <Panel title="提醒偏好" description="保存站内提醒偏好；邮件、短信和系统推送尚未接入。">
+            {(
+              [
+                ['deadline', '岗位截止提醒'],
+                ['interview', '面试日程提醒'],
+                ['learning', '学习节奏提醒'],
+              ] as const
+            ).map(([key, label]) => (
+              <div key={key} className={s.settingRow}>
+                <h3>{label}</h3>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-label={label}
+                  aria-checked={!!preferences[key]}
+                  className={s.switch}
+                  disabled={savingPreference}
+                  onClick={async () => {
+                    setSavingPreference(true);
+                    try {
+                      const latest = parseJson<Record<string, boolean>>(
+                        useRadarStore.getState().notes['account-preferences'],
+                        preferences,
+                      );
+                      if (
+                        await store.setNote(
+                          'account-preferences',
+                          JSON.stringify({ ...latest, [key]: !latest[key] }),
+                        )
+                      )
+                        toast.success('提醒偏好已保存到账号');
+                    } finally {
+                      setSavingPreference(false);
+                    }
+                  }}
+                >
+                  <span />
+                </button>
+              </div>
+            ))}
+          </Panel>
+        </section>
+        <section id="privacy">
+          <Panel title="数据与隐私" description="导出、恢复或清理当前账号的私有求职数据。">
+            <CloudDataTools />
+          </Panel>
+        </section>
+      </div>
     </>
   );
 }

@@ -40,7 +40,18 @@ export const subscriptionSchema = z
   })
   .passthrough();
 export const referralRecordSchema = z
-  .object({ id, title: text, companyId: id, contact: text, stage: text, date: text, note: text })
+  .object({
+    id,
+    title: text,
+    companyId: text,
+    company: text.optional(),
+    code: text.optional(),
+    role: text.optional(),
+    contact: text,
+    stage: text,
+    date: text,
+    note: text,
+  })
   .passthrough();
 export const plannerTaskSchema = z
   .object({

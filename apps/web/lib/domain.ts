@@ -17,7 +17,9 @@ export function filterJobs(items: Job[], filters: JobFilters): Job[] {
         [job.title, company.name, company.en, job.department, ...job.tags].some((v) =>
           v.toLowerCase().includes(q),
         )) &&
-      (!filters.city || filters.city === '不限' || job.city === filters.city) &&
+      (!filters.city ||
+        filters.city === '不限' ||
+        job.city.split(/\s*[/、,，]\s*/).includes(filters.city)) &&
       (!filters.role || filters.role === '不限' || job.role === filters.role) &&
       (!filters.type || filters.type === '不限' || job.type === filters.type) &&
       (!filters.education || filters.education === '不限' || job.education === filters.education) &&
@@ -31,9 +33,13 @@ export function filterJobs(items: Job[], filters: JobFilters): Job[] {
 }
 export function deadlineDays(deadline: string | null): number | null {
   if (!deadline) return null;
-  const base = new Date(`${DEMO_NOW.slice(0, 10)}T00:00:00+08:00`).getTime();
+  const day =
+    process.env.NEXT_PUBLIC_DATA_MODE === 'api'
+      ? new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' })
+      : DEMO_NOW.slice(0, 10);
+  const base = new Date(`${day}T00:00:00+08:00`).getTime();
   const target = new Date(`${deadline}T00:00:00+08:00`).getTime();
-  return Math.round((target - base) / 86400000);
+  return Number.isFinite(target) ? Math.round((target - base) / 86400000) : null;
 }
 export function transitionApplication(
   items: Application[],

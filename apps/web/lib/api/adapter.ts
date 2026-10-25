@@ -1,3 +1,4 @@
+import type { Catalog } from '../data';
 import type {
   ApiList,
   Application,
@@ -107,6 +108,18 @@ export class HttpAdapter implements CampusReadAdapter {
   }
   private async single<T>(path: string, options: Options = {}): Promise<T> {
     return (await this.request<{ data: T }>(path, options)).data;
+  }
+  catalog(signal?: AbortSignal) {
+    return this.single<Catalog>('/catalog', { signal });
+  }
+  importJobs(input: unknown) {
+    return this.single<{ inserted: number }>('/jobs/import', { method: 'POST', body: input });
+  }
+  deleteApplication(id: string, version: number) {
+    return this.request<void>('/applications/' + segment(id), {
+      method: 'DELETE',
+      body: { version },
+    });
   }
   jobs(query?: Query, signal?: AbortSignal) {
     return this.request<ApiList<JobCard>>('/jobs', { query, signal });

@@ -3,6 +3,7 @@
 **Goal:** 实现已确认的全站 mock 预览与 MVP 核心闭环，提供独立 worker 和数据库部署基础。
 **Architecture:** Next.js App Router 按页面路由，按 features 拆业务；React Query 管读取，Zustand 持久化非敏感演示操作；Python worker 与 PostgreSQL 独立。
 **Spec:** 00-proposal.md 与 01–06 六份已确认文档。
+**Scope update (2026-10-24):** 用户取消外部AI、embedding语义推荐与云端转写；保留规则分析与题库模拟练习。历史记录中的“AI未开通”不再代表后续待办；不修改已应用的数据库迁移。
 **Constraints:** 保留已有 Vue 文件删除状态；不部署、不提交既有变更；所有演示值明确标记；不调用付费 AI、不启动真实爬虫；全部 token 由 tailwind.config.ts 管理；真实服务缺少配置必须明确失败。
 
 ## Task 1: 可运行工作区与设计系统

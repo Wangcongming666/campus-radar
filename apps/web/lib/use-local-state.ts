@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useRef, useState, type SetStateAction } from 'react';
 import { toast } from 'sonner';
+import { isApiMode, useWorkspaceRecord } from './api/workspace-client';
 import {
   LOCAL_RESET_EVENT,
   LOCAL_STATE_EVENT,
@@ -14,6 +15,7 @@ export function useLocalState<T>(
   initial: T,
   validate?: (value: unknown) => value is T,
 ) {
+  const remote = useWorkspaceRecord(key, initial);
   const seed = useRef(initial);
   const validator = useRef(validate);
   validator.current = validate;
@@ -32,6 +34,7 @@ export function useLocalState<T>(
   if (keyRef.current !== key) seed.current = initial;
   keyRef.current = key;
   useEffect(() => {
+    if (isApiMode()) return;
     const load = () => {
       try {
         setState({
@@ -58,7 +61,11 @@ export function useLocalState<T>(
       window.removeEventListener(LOCAL_RESET_EVENT, load);
     };
   }, [key]);
-  function save(next: SetStateAction<T>): boolean {
+  async function save(next: SetStateAction<T>): Promise<boolean> {
+    if (isApiMode()) {
+      if (validator.current && typeof next !== 'function' && !validator.current(next)) return false;
+      return remote.save(next);
+    }
     try {
       const current = read();
       const value = typeof next === 'function' ? (next as (previous: T) => T)(current) : next;
@@ -74,5 +81,5 @@ export function useLocalState<T>(
       return false;
     }
   }
-  return [state.key === key ? state.value : seed.current, save] as const;
+  return [isApiMode() ? remote.value : state.key === key ? state.value : seed.current, save] as const;
 }

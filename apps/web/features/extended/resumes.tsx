@@ -35,6 +35,7 @@ import {
   useInterviewLocal,
 } from '@/lib/interview-repository';
 import { Field, Modal, Pick } from './common';
+import { isApiMode } from '@/lib/api/workspace-client';
 
 export function ResumesPage() {
   const library = useInterviewLocal<ResumeVersion[]>('resume-library-v2', [], isResumeLibrary);
@@ -130,7 +131,7 @@ export function ResumesPage() {
         applicationIds: [],
         extractionNote: extracted.note,
       };
-      if (!library.save((items) => [item, ...items])) {
+      if (!(await library.save((items) => [item, ...items]))) {
         await deleteInterviewFile(id);
         return;
       }
@@ -138,7 +139,7 @@ export function ResumesPage() {
       setAdd(false);
       setName('');
       setFile(null);
-      toast.success('简历原文件与版本已保存在本机');
+      toast.success('简历原文件与版本已保存');
     } catch (e) {
       setError(e instanceof Error ? e.message : '上传失败，请重试');
     } finally {
@@ -162,17 +163,17 @@ export function ResumesPage() {
       const before = library.value;
       const remaining = library.value.filter((x) => x.id !== current.id);
       if (current.default && remaining[0]) remaining[0] = { ...remaining[0], default: true };
-      if (!library.save(remaining)) return;
+      if (!(await library.save(remaining))) return;
       try {
         await deleteInterviewFile(current.id);
       } catch (e) {
-        library.save(before);
+        await library.save(before);
         throw e;
       }
-      linked.forEach((app) => updateApplication(app.id, { resumeId: undefined }));
+      for (const app of linked) await updateApplication(app.id, { resumeId: undefined });
       setSelected(remaining[0]?.id ?? '');
       setRemove(false);
-      toast.success('版本及本地原文件已删除');
+      toast.success('版本及原文件已删除');
     } catch (e) {
       setError(e instanceof Error ? e.message : '删除失败');
     } finally {
@@ -198,8 +199,11 @@ export function ResumesPage() {
         }
       />
       <DemoNotice>
-        简历原文件仅存于浏览器本地文件库，文字与版本信息保存在本机。支持 PDF、TXT、MD（最多 10
-        MB）；PDF 扫描件需手动补充文字。清除浏览器数据会删除文件，请及时下载备份。
+        {isApiMode()
+          ? '简历原件与版本保存在当前账户的私有存储中。'
+          : '简历原件与版本仅保存在本机。'}
+        支持 PDF、TXT、MD（最多 10 MB）；PDF
+        扫描件需手动补充文字。清除浏览器数据会删除文件，请及时下载备份。
       </DemoNotice>
       {(library.error || error) && (
         <p
@@ -211,7 +215,7 @@ export function ResumesPage() {
       )}
       {!library.ready ? (
         <Panel>
-          <p role="status">正在读取本机简历…</p>
+          <p role="status">正在读取简历…</p>
         </Panel>
       ) : !current ? (
         <div className="space-y-5">
@@ -230,7 +234,7 @@ export function ResumesPage() {
             {[
               {
                 icon: FileText,
-                title: '01 · 本机预览',
+                title: '01 · 原件预览',
                 body: '保留 PDF、TXT 或 MD 原件，随时预览和下载。',
               },
               {
@@ -300,8 +304,8 @@ export function ResumesPage() {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() =>
-                      library.save((items) =>
+                    onClick={async () =>
+                      await library.save((items) =>
                         items.map((x) => ({ ...x, default: x.id === current.id })),
                       )
                     }
@@ -362,15 +366,15 @@ export function ResumesPage() {
                 rows={8}
                 value={draftText}
                 onChange={(e) => setDraftText(e.target.value)}
-                maxLength={500_000}
+                maxLength={200_000}
               />
               <Button
                 className="mt-3"
                 size="sm"
                 disabled={draftText === current.text}
-                onClick={() => {
+                onClick={async () => {
                   if (
-                    library.save((items) =>
+                    await library.save((items) =>
                       items.map((x) => (x.id === current.id ? { ...x, text: draftText } : x)),
                     )
                   )
@@ -396,8 +400,8 @@ export function ResumesPage() {
                         <input
                           type="checkbox"
                           checked={app.resumeId === current.id}
-                          onChange={(e) =>
-                            updateApplication(app.id, {
+                          onChange={async (e) =>
+                            await updateApplication(app.id, {
                               resumeId: e.target.checked ? current.id : undefined,
                             })
                           }

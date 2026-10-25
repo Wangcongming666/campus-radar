@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { motion, useScroll, useTransform, useReducedMotion } from 'framer-motion';
@@ -26,7 +26,8 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { CompanyLogo, DemoNotice, MatchRing, ProgressBar, SmallTag } from '@/components/shared';
-import { companies, jobs } from '@/lib/data';
+import { companies, jobs, experiences, chapters } from '@/lib/data';
+import { subscribeCatalog, getCatalogRevision, loadCatalog } from '@/lib/catalog';
 import { useRadarStore } from '@/lib/store';
 import s from './public.module.css';
 import { useCampus } from '@/components/campus-provider';
@@ -69,6 +70,18 @@ export function Brand() {
   );
 }
 export function LandingPage() {
+  const { mode, adapter } = useCampus();
+  const cloud = mode === 'api';
+  useSyncExternalStore(subscribeCatalog, getCatalogRevision, () => 0);
+  const [catalogError, setCatalogError] = useState('');
+  useEffect(() => {
+    if (!cloud) return;
+    const controller = new AbortController();
+    void loadCatalog(adapter, controller.signal).catch(error => {
+      if (!controller.signal.aborted) setCatalogError(error instanceof Error ? error.message : '目录暂不可用');
+    });
+    return () => controller.abort();
+  }, [cloud, adapter]);
   const previewRef = useRef<HTMLElement>(null);
   const { scrollYProgress } = useScroll({ target: previewRef, offset: ['start end', 'end start'] });
   const previewY = useTransform(scrollYProgress, [0, 1], [-18, 18]);
@@ -115,10 +128,11 @@ export function LandingPage() {
                 </Link>
               </Button>
               <Button size="lg" variant="outline" asChild>
-                <Link href="/pipeline">探索演示工作台</Link>
+                <Link href="/pipeline">{cloud ? '打开我的工作台' : '探索演示工作台'}</Link>
               </Button>
             </div>
-            <span className={s.footnote}>无需注册即可体验 · 所有招聘内容均为演示数据</span>
+            <span className={s.footnote}>{cloud ? '官方公开来源 · 注册后保存你的求职进度' : '无需注册即可体验 · 所有招聘内容均为演示数据'}</span>
+            {catalogError && <p role="alert" className="text-xs text-destructive">{catalogError}</p>}
           </div>
           <div className={s.radarWrap} aria-label="岗位雷达演示">
             <div className={s.radar}>
@@ -137,11 +151,11 @@ export function LandingPage() {
                   <span>
                     {companies.find((c) => c.id === j.companyId)?.name} · {j.role}
                   </span>
-                  <small>{j.city} / 2027 届秋招</small>
+                  <small>{j.city} / {cloud ? j.type : '2027 届秋招'}</small>
                 </div>
                 <span className={s.match}>
-                  {j.match}
-                  <small>% 匹配</small>
+                  {cloud ? '官方' : j.match}
+                  <small>{cloud ? '来源' : '% 匹配'}</small>
                 </span>
               </Link>
             ))}
@@ -151,17 +165,22 @@ export function LandingPage() {
                 <i />
                 <i />
               </span>
-              机会持续发现中 <span className="text-primary">12 个演示岗位</span>
+              机会持续发现中 <span className="text-primary">{cloud ? `${jobs.length} 个已收录岗位` : '12 个演示岗位'}</span>
             </div>
           </div>
         </section>
         <div className={s.stats}>
-          {[
+          {(cloud ? [
+            [String(jobs.length), '已收录岗位'],
+            [String(companies.length), '公司档案'],
+            [String(experiences.length), '公开面试复盘'],
+            ['1', '你的校招工作台'],
+          ] : [
             ['12', '精选演示岗位'],
             ['8', '热门企业档案'],
             ['6', '面试复盘样本'],
             ['1', '你的校招工作台'],
-          ].map(([n, t]) => (
+          ]).map(([n, t]) => (
             <div key={t}>
               <strong>{n}</strong>
               <span>{t}</span>
@@ -202,7 +221,7 @@ export function LandingPage() {
                         {j.city} · {j.salary}
                       </p>
                     </div>
-                    <MatchRing value={j.match} size={36} />
+                    {!cloud && <MatchRing value={j.match} size={36} />}
                   </Link>
                 ))}
               </div>
@@ -213,7 +232,7 @@ export function LandingPage() {
               </div>
               <h3>每一次投递，都有下文。</h3>
               <p>从待投递到 Offer，一张看板管理进展。记录每次沟通，把精力留给真正重要的准备。</p>
-              <div className={s.board}>
+              <p className="!text-[10px]">功能示意</p><div className={s.board}>
                 {[
                   ['待投递', '网易', '客户端开发'],
                   ['面试中', '腾讯', '前端开发'],
@@ -253,7 +272,7 @@ export function LandingPage() {
                   <span />
                   <span style={{ width: '75%' }} />
                   <span style={{ width: '90%' }} />
-                  <SmallTag>6 个知识章节 · 可记录学习笔记</SmallTag>
+                  <SmallTag>{cloud ? chapters.length : 6} 个知识章节 · 可记录学习笔记</SmallTag>
                 </div>
               </Link>
             </article>
@@ -377,7 +396,12 @@ export function LandingPage() {
             <p className="text-xs text-muted-foreground mt-4">关于这次产品体验的几个答案。</p>
           </div>
           <div>
-            {[
+            {(cloud ? [
+              ['这里的岗位是真实的吗？', '当前展示已收录的官方公开岗位元数据及原始链接，来源未提供的薪资、学历和截止日期显示未知。未启用全网实时抓取，申请前请核对官方页面。'],
+              ['需要注册或支付费用吗？', '注册账号后可保存求职记录。当前本机服务不收费，登录使用受保护会话。'],
+              ['我的操作会保存吗？', '投递、收藏、日程、简历与学习记录通过 API 保存到服务器数据库。设置页支持账号备份、恢复和清空私有数据。'],
+              ['可以上传真实简历吗？', '支持 PDF、TXT、MD。原件保存到服务器私有目录，下载验证账号归属；文本提取在浏览器进行，当前不发送至外部模型。'],
+            ] : [
               [
                 '这里的岗位是真实的吗？',
                 '目前是完整交互的产品演示。岗位、薪资、面经、匹配分与 Offer 故事均为样本，不代表企业当前招聘信息。正式投递请以企业官网为准。',
@@ -394,7 +418,7 @@ export function LandingPage() {
                 '可以上传真实简历吗？',
                 '支持在当前浏览器解析 PDF、TXT、MD 简历，原文件存于本机 IndexedDB，不会发送至服务器或外部模型。扫描件需手动补充文字；可在简历版本库删除文件，清除浏览器数据也会删除本机记录。',
               ],
-            ].map(([q, a]) => (
+            ]).map(([q, a]) => (
               <details key={q}>
                 <summary>{q}</summary>
                 <p>{a}</p>
@@ -417,7 +441,7 @@ export function LandingPage() {
         <span>
           © 2026 Campus Radar
           <br />
-          产品交互演示 · 本地数据体验
+          {cloud ? '官方岗位目录 · 账号求职工作台' : '产品交互演示 · 本地数据体验'}
         </span>
       </footer>
     </div>
@@ -687,10 +711,10 @@ function DemoOnboardingPage() {
     month: '2-digit',
     day: '2-digit',
   }).format(new Date());
-  function patch(change: Partial<OnboardingDraft>) {
+  async function patch(change: Partial<OnboardingDraft>) {
     const next = { ...draft, ...change, finished: false };
     setDraft(next);
-    if (repository.save(next)) {
+    if (await repository.save(next)) {
       setStatus('草稿已自动保存到本机');
       setError('');
     } else {
@@ -761,14 +785,14 @@ function DemoOnboardingPage() {
       setBusy(false);
     }
   }
-  function saveResumeText() {
+  async function saveResumeText() {
     const item = library.value.find((r) => r.id === draft.resumeId);
     if (!item) {
       setError('请先导入文件或解析示例，再保存校正文字。');
       return;
     }
     if (
-      library.save((items) =>
+      await library.save((items) =>
         items.map((r) => (r.id === draft.resumeId ? { ...r, text: draft.resumeText } : r)),
       )
     )

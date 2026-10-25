@@ -15,3 +15,7 @@ __pycache__/
 playwright-report/
 test-results/
 test-results-api/
+test-results-*/
+infrastructure/.pgvector-enable.lock/
+.data/
+.next-*/

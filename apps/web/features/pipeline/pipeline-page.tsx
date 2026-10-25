@@ -570,8 +570,8 @@ export default function PipelinePage() {
               取消
             </Button>
             <Button
-              onClick={() => {
-                addApplication(selectedJob);
+              onClick={async () => {
+                if (!(await addApplication(selectedJob))) return;
                 setNewOpen(false);
               }}
             >
@@ -591,7 +591,9 @@ export default function PipelinePage() {
           <SheetHeader>
             <SheetTitle>投递详情</SheetTitle>
             <SheetDescription className="text-xs text-muted-foreground">
-              阶段与笔记保存在本机演示记录中
+              {process.env.NEXT_PUBLIC_DATA_MODE === 'api'
+                ? '阶段与笔记保存到你的云端账号'
+                : '阶段与笔记保存在本机演示记录中'}
             </SheetDescription>
           </SheetHeader>
           {current &&
@@ -688,14 +690,14 @@ export default function PipelinePage() {
                     <Button
                       className="mt-3"
                       size="sm"
-                      onClick={() => {
-                        if (!updateApplication(current.id, { notes: note }, noteVersion)) {
+                      onClick={async () => {
+                        if (!(await updateApplication(current.id, { notes: note }, noteVersion))) {
                           setNoteConflict(true);
                           return;
                         }
                         setNoteVersion(noteVersion + 1);
                         setNoteConflict(false);
-                        toast.success('笔记已保存到本机');
+                        toast.success('笔记已保存');
                       }}
                     >
                       <Save />
@@ -780,8 +782,9 @@ export default function PipelinePage() {
                   <Button
                     variant="outline"
                     className="mt-auto"
-                    onClick={() => {
-                      updateApplication(current.id, { archived: !current.archived });
+                    onClick={async () => {
+                      if (!(await updateApplication(current.id, { archived: !current.archived })))
+                        return;
                       setSelected(null);
                       toast.success(
                         current.archived ? '已恢复到活跃投递' : '已归档，可在归档箱中恢复',
@@ -809,7 +812,7 @@ export default function PipelinePage() {
           <DialogHeader>
             <DialogTitle>删除这份投递记录？</DialogTitle>
             <DialogDescription>
-              记录将从本机看板和统计中移除，岗位收藏与已上传简历仍保留。此操作不会撤回企业官网的申请。
+              记录将从看板和统计中移除，岗位收藏与已上传简历仍保留。此操作不会撤回企业官网的申请。
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -818,8 +821,8 @@ export default function PipelinePage() {
             </Button>
             <Button
               variant="destructive"
-              onClick={() => {
-                if (current) removeApplication(current.id);
+              onClick={async () => {
+                if (current && !(await removeApplication(current.id))) return;
                 setDeleteOpen(false);
                 setSelected(null);
                 toast.success('投递记录已删除');

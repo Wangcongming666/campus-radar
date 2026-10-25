@@ -27,8 +27,12 @@ import { jobs, experiences, questions, getCompany } from '@/lib/data';
 import { useRadarStore } from '@/lib/store';
 import { deadlineDays } from '@/lib/domain';
 import { useAllExperiences } from '@/lib/knowledge-local';
+import { useLocalJobProfile } from '@/lib/use-local-job-profile';
+import { matchJob } from '@/lib/local-matching';
 export function PreviewDrawer() {
+  const cloud = process.env.NEXT_PUBLIC_DATA_MODE === 'api';
   const localExperiences = useAllExperiences();
+  const profile = useLocalJobProfile();
   const params = useSearchParams(),
     pathname = usePathname(),
     router = useRouter();
@@ -38,6 +42,7 @@ export function PreviewDrawer() {
     experience = localExperiences.find((e) => e.id === id),
     question = questions.find((q) => q.id === id);
   const { favorites, toggleFavorite, addApplication } = useRadarStore();
+  const score = cloud && job ? matchJob(job, profile).score : job?.match;
   const close = () => {
     const next = new URLSearchParams(params.toString());
     next.delete('preview');
@@ -92,7 +97,7 @@ export function PreviewDrawer() {
                       <p className="text-xs text-muted-foreground mt-1">{job.department}</p>
                     </div>
                     <div className="ml-auto">
-                      <MatchRing value={job.match} size={52} />
+                      {score === null || score === undefined ? <span className="text-xs text-subtle">待完善画像</span> : <MatchRing value={score} size={52} />}
                     </div>
                   </div>
                   <h2 className="text-2xl font-semibold mb-2">{job.title}</h2>
@@ -106,7 +111,12 @@ export function PreviewDrawer() {
                       <GraduationCap className="size-3.5" />
                       {job.education}
                     </span>
-                    <span>2027届 · {job.type}</span>
+                    <span>
+                      {job.graduationYears?.length
+                        ? job.graduationYears.join('、') + '届'
+                        : '届别未明确'}{' '}
+                      · {job.type}
+                    </span>
                   </div>
                   <div className="flex flex-wrap gap-2 mt-4">
                     {job.tags.map((tag) => (
@@ -115,7 +125,11 @@ export function PreviewDrawer() {
                   </div>
                   <div className="rounded-lg bg-primary/[.05] p-3 mt-6 flex gap-2 text-xs text-primary">
                     <Sparkles className="size-4 shrink-0" />
-                    <span>匹配度为演示评分。技能标签与偏好分析将在真实服务接入后提供。</span>
+                    <span>
+                      {cloud
+                        ? '目录信息由来源记录提供，请核对原始岗位链接。匹配结果仅供准备参考。'
+                        : '匹配度为演示评分。技能标签与偏好分析将在真实服务接入后提供。'}
+                    </span>
                   </div>
                   <h3 className="text-sm font-semibold mt-7 mb-3">岗位职责</h3>
                   <ul className="grid gap-3 text-xs text-muted-foreground leading-7">
@@ -138,7 +152,7 @@ export function PreviewDrawer() {
                   <div className="flex items-center gap-2 text-xs text-warning mt-6">
                     <Clock className="size-3.5" />
                     {job.deadline
-                      ? `${job.deadline} 截止 · 剩余 ${deadlineDays(job.deadline)} 天（演示基准）`
+                      ? `${job.deadline} 截止 · 剩余 ${deadlineDays(job.deadline)} 天${cloud ? '' : '（演示基准）'}`
                       : '截止时间暂未公布'}
                   </div>
                 </>
@@ -176,7 +190,7 @@ export function PreviewDrawer() {
                   </div>
                   <h2 className="text-xl leading-relaxed font-semibold">{question.title}</h2>
                   <p className="text-xs text-muted-foreground mt-4">
-                    演示面试提及频次 {question.frequency}%
+                    题库提及频次 {question.frequency}%
                   </p>
                   <h3 className="font-semibold mt-8 mb-3">参考思路</h3>
                   <p className="text-sm text-muted-foreground leading-8">{question.answer}</p>
@@ -195,16 +209,20 @@ export function PreviewDrawer() {
               </div>
             </div>
             <div className="flex shrink-0 gap-2 border-t p-5">
-              <Button
-                variant="outline"
-                size="icon"
-                aria-label="收藏预览内容"
-                onClick={() => toggleFavorite(type, id)}
-              >
-                <Bookmark
-                  className={favorites.includes(`${type}:${id}`) ? 'fill-current text-primary' : ''}
-                />
-              </Button>
+              {(!cloud || type !== 'question') && (
+                <Button
+                  variant="outline"
+                  size="icon"
+                  aria-label="收藏预览内容"
+                  onClick={() => toggleFavorite(type, id)}
+                >
+                  <Bookmark
+                    className={
+                      favorites.includes(`${type}:${id}`) ? 'fill-current text-primary' : ''
+                    }
+                  />
+                </Button>
+              )}
               <Button variant="outline" className="flex-1" asChild>
                 <Link href={detailHref}>
                   完整详情

@@ -6,6 +6,7 @@ import {
   plannerTaskSchema,
   resumeRecordSchema,
   companyNoteSchema,
+  referralRecordSchema,
 } from './growth-storage';
 describe('growth local record boundaries', () => {
   it('skips damaged offers, nonfinite amounts and duplicated ids while retaining healthy records', () => {
@@ -61,5 +62,24 @@ describe('growth local record boundaries', () => {
   });
   it('handles non-array backup values without throwing', () => {
     expect(cleanLocalRecords({ id: 'wrong-root' }, offerSchema)).toEqual({ value: [], invalid: 1 });
+  });
+});
+
+it('retains a user-entered referral company and code when the public catalog is empty', () => {
+  const record = {
+    id: 'real-referral',
+    title: '实际岗位',
+    companyId: '',
+    company: '实际公司',
+    code: 'real-code-from-contact',
+    role: '研发',
+    contact: '我的联系人',
+    stage: '准备联系',
+    date: '2026-10-24',
+    note: '',
+  };
+  expect(cleanLocalRecords([record], referralRecordSchema)).toEqual({
+    value: [record],
+    invalid: 0,
   });
 });

@@ -2,6 +2,8 @@
 
 日期：2026-10-23。状态：用户已确认并进入实现。当前交付与验证结果见 [08 交付状态](08-delivery-status.md)；未恢复已有删除文件、未部署生产。
 
+2026-10-24 范围更新：用户取消外部AI、embedding推荐与云端转写，保留规则工具和题库模拟练习。对应PRD与架构已更新，数据库保持原定结构。
+
 ## 交付与决策
 
 1. 推荐：模块化 Next.js 单体 + Python 异步 worker + PostgreSQL/pgvector。业务闭环集中，异步任务独立扩容；第一阶段不引入微服务、Redis 或独立搜索集群。
@@ -27,7 +29,7 @@
 3. [设计系统](03-design-system.md)：token、双主题、组件、动效、可访问性。
 4. [数据模型](04-data-model.md)：ER、字段、枚举、JSONB、向量与权限。
 5. [API 文档](05-api.md) + [OpenAPI 3.1 合同](openapi.json)：仅 MVP 公共 API 与内部爬虫同步接口。
-6. [技术架构](06-technical-architecture.md)：分层、数据流、目录、爬虫、AI、成本、环境变量、部署与观测。
+6. [技术架构](06-technical-architecture.md)：分层、数据流、目录、爬虫、规则工具、环境变量、部署与观测。
 
 ## 两条交付线
 

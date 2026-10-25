@@ -2,9 +2,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { experiences, questions, type Experience } from './data';
 import { decodeKnowledgeRecord } from './knowledge-records';
+import { isApiMode, readWorkspaceValue, useWorkspaceRecord } from './api/workspace-client';
 export const KNOWLEDGE_EVENT = 'radar-knowledge-change';
 export const KNOWLEDGE_PREFIX = 'radar-extended-';
 export function readLocalKnowledge<T>(key: string, initial: T): T {
+  if (isApiMode()) return readWorkspaceValue(key, initial);
   if (typeof window === 'undefined') return initial;
   const raw = localStorage.getItem(`${KNOWLEDGE_PREFIX}${key}`);
   if (!raw) return initial;
@@ -24,15 +26,17 @@ export function readLocalExperiences(): Experience[] {
   );
 }
 export function readAllExperiences(): Experience[] {
-  return [...readLocalExperiences(), ...experiences];
+  return [...new Map([...readLocalExperiences(), ...experiences].map((e) => [e.id, e])).values()];
 }
 export function useKnowledgeLocal<T>(key: string, initial: T) {
+  const remote = useWorkspaceRecord(key, initial);
   const [value, setValue] = useState<T>(initial);
   const [error, setError] = useState('');
   const [ready, setReady] = useState(false);
   const ref = useRef(initial);
   const initialRef = useRef(initial);
   useEffect(() => {
+    if (isApiMode()) { setReady(true); return; }
     const sync = (event?: Event) => {
       if (event instanceof CustomEvent && event.detail?.key && event.detail.key !== key) return;
       if (event instanceof StorageEvent && event.key && event.key !== `${KNOWLEDGE_PREFIX}${key}`)
@@ -58,7 +62,12 @@ export function useKnowledgeLocal<T>(key: string, initial: T) {
     };
   }, [key]);
   const save = useCallback(
-    (next: T | ((current: T) => T)) => {
+    async (next: T | ((current: T) => T)): Promise<boolean> => {
+      if (isApiMode()) {
+        const success = await remote.save(next);
+        if (success && key === 'knowledge-experiences') window.dispatchEvent(new Event('radar-api-catalog-refresh'));
+        return success;
+      }
       try {
         const latest = readLocalKnowledge(key, initialRef.current);
         const updated = typeof next === 'function' ? (next as (current: T) => T)(latest) : next;
@@ -75,7 +84,7 @@ export function useKnowledgeLocal<T>(key: string, initial: T) {
     },
     [key],
   );
-  return [value, save, error, ready] as const;
+  return [isApiMode() ? remote.value : value, save, isApiMode() ? remote.error : error, isApiMode() ? remote.ready : ready] as const;
 }
 export function downloadKnowledge(name: string, content: string) {
   const url = URL.createObjectURL(new Blob([content], { type: 'text/markdown;charset=utf-8' }));
@@ -87,7 +96,7 @@ export function downloadKnowledge(name: string, content: string) {
 }
 export function useAllExperiences() {
   const [local] = useKnowledgeLocal<Experience[]>('knowledge-experiences', []);
-  return [...local, ...experiences];
+  return [...new Map([...local, ...experiences].map((e) => [e.id, e])).values()];
 }
 export function useAllQuestions() {
   return questions;

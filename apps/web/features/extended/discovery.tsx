@@ -26,6 +26,7 @@ import {
 import { useValidatedArray } from './growth-local-state';
 import { subscriptionSchema, referralRecordSchema } from '@/lib/growth-storage';
 import { Field, Pick, Modal, Row } from './common';
+const apiMode = process.env.NEXT_PUBLIC_DATA_MODE === 'api';
 type Rule = SubscriptionFilter & {
   id: string;
   name: string;
@@ -56,7 +57,7 @@ export function SubscriptionsPage() {
   const [error, setError] = useState('');
   const selected = items.find((x) => x.id === view);
   const matched = draft ? jobs.filter((job) => matchesSubscription(job, draft)) : [];
-  function scan(id?: string) {
+  async function scan(id?: string) {
     const next = items.map((rule) =>
       !id || rule.id === id
         ? {
@@ -65,19 +66,19 @@ export function SubscriptionsPage() {
           }
         : rule,
     );
-    if (!setItems(next)) return;
-    next.forEach((rule, i) => {
+    if (!(await setItems(next))) return;
+    for (const [i, rule] of next.entries()) {
       const count = rule.hits.length - items[i].hits.length;
       if (count > 0 && rule.channels.includes('站内'))
-        notify({
+        await notify({
           title: `${rule.name} 命中 ${count} 个岗位`,
-          content: '来自本地岗位条件匹配，查看订阅命中记录。',
+          content: '来自岗位库条件匹配，查看订阅命中记录。',
           category: '岗位动态',
           href: '/subscriptions',
         });
-    });
+    }
   }
-  function save() {
+  async function save() {
     if (!draft?.name.trim()) {
       setError('请输入订阅名称');
       return;
@@ -89,18 +90,18 @@ export function SubscriptionsPage() {
       hits: collectHits(jobs, draft, draft.hits, new Date().toISOString(), draft.enabled),
     };
     if (
-      !setItems((list) =>
+      !(await setItems((list) =>
         list.some((x) => x.id === rule.id)
           ? list.map((x) => (x.id === rule.id ? rule : x))
           : [...list, rule],
-      )
+      ))
     )
       return;
     const added = rule.hits.length - draft.hits.length;
     if (added > 0 && rule.channels.includes('站内'))
-      notify({
+      await notify({
         title: `${rule.name} 命中 ${added} 个岗位`,
-        content: '已根据保存的条件匹配本地岗位。',
+        content: '已根据保存的条件匹配岗位库。',
         category: '岗位动态',
         href: '/subscriptions',
       });
@@ -110,7 +111,7 @@ export function SubscriptionsPage() {
     <div className="space-y-6">
       <PageHeader
         title="订阅管理"
-        description="组合岗位条件，检查本地岗位库里的新机会。"
+        description="组合岗位条件，检查岗位库里的新机会。"
         action={
           <Button
             onClick={() => {
@@ -124,7 +125,7 @@ export function SubscriptionsPage() {
         }
       />
       <DemoNotice>
-        匹配当前本地演示岗位；保存和手动检查时生成命中记录。提醒频率与邮件/推送为本地偏好，未连接后台定时任务或外部渠道。
+        匹配当前岗位库；保存和手动检查时生成命中记录。提醒频率与邮件/推送为偏好配置，未连接后台定时任务或外部渠道。
       </DemoNotice>
       <div className="grid gap-4 md:grid-cols-3">
         <StatCard label="正在运行" value={items.filter((x) => x.enabled).length} icon={Bell} />
@@ -218,9 +219,9 @@ export function SubscriptionsPage() {
       >
         <form
           className="grid gap-4"
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault();
-            save();
+            await save();
           }}
         >
           {draft && (
@@ -299,7 +300,7 @@ export function SubscriptionsPage() {
                 ))}
               </fieldset>
               <div className="rounded-lg bg-primary/5 p-3 text-sm">
-                当前条件命中 {matched.length} 个本地岗位
+                当前条件命中 {matched.length} 个岗位
                 <div className="mt-2 flex flex-wrap gap-2">
                   {matched.map((j) => (
                     <Link key={j.id} href={`/jobs/${j.id}`} className="underline">
@@ -360,7 +361,7 @@ export function SubscriptionsPage() {
     </div>
   );
 }
-const referralData = companies.slice(0, 4).map((c, i) => ({
+const referralData = (apiMode ? [] : companies.slice(0, 4)).map((c, i) => ({
   companyId: c.id,
   code: `DEMO-${c.id.toUpperCase()}2027`,
   title: `${c.name} 2027 校园招聘`,
@@ -372,6 +373,9 @@ type ReferralRecord = {
   id: string;
   title: string;
   companyId: string;
+  company?: string;
+  code?: string;
+  role?: string;
   contact: string;
   stage: string;
   date: string;
@@ -380,7 +384,10 @@ type ReferralRecord = {
 const newReferral = (): ReferralRecord => ({
   id: '',
   title: '',
-  companyId: companies[0].id,
+  companyId: companies[0]?.id ?? '',
+  company: '',
+  code: '',
+  role: '',
   contact: '',
   stage: '准备联系',
   date: new Date().toISOString().slice(0, 10),
@@ -404,18 +411,36 @@ export function ReferralPage() {
       (company === '全部公司' || getCompany(x.companyId).name === company) &&
       (direction === '全部方向' || x.role.includes(direction)),
   );
-  function save() {
-    if (!draft?.title.trim() || !draft.date) {
-      setError('请填写目标岗位和记录日期');
+  const recordCompany = (record: ReferralRecord) =>
+    record.company || getCompany(record.companyId).name;
+  const filteredRecords = records.filter(
+    (record) =>
+      (!q ||
+        `${recordCompany(record)} ${record.title} ${record.role ?? ''} ${record.code ?? ''}`
+          .toLowerCase()
+          .includes(q.toLowerCase())) &&
+      (company === '全部公司' || recordCompany(record) === company) &&
+      (direction === '全部方向' || `${record.role ?? ''} ${record.title}`.includes(direction)),
+  );
+  async function save() {
+    if (!draft?.title.trim() || !draft.date || (!draft.companyId && !draft.company?.trim())) {
+      setError('请填写目标岗位、公司和记录日期');
       return;
     }
-    const item = { ...draft, id: draft.id || crypto.randomUUID() };
+    const item = {
+      ...draft,
+      title: draft.title.trim(),
+      company: draft.company?.trim() ?? '',
+      code: draft.code?.trim() ?? '',
+      role: draft.role?.trim() ?? '',
+      id: draft.id || crypto.randomUUID(),
+    };
     if (
-      !setRecords((xs) =>
+      !(await setRecords((xs) =>
         xs.some((x) => x.id === item.id)
           ? xs.map((x) => (x.id === item.id ? item : x))
           : [...xs, item],
-      )
+      ))
     )
       return;
     setDraft(null);
@@ -437,7 +462,10 @@ export function ReferralPage() {
         }
       />
       <DemoNotice>
-        所有展示的联系人与内推码均为虚构样例。进度只保存在本机，不会向联系人发送任何信息。
+        {apiMode
+          ? '录入你已获取的真实内推码、公司和岗位，随账号保存联系与申请进度。'
+          : '所有展示的联系人与内推码均为虚构样例。进度只保存在本机。'}
+        联系和申请由你自行完成。
       </DemoNotice>
       <div className="grid gap-3 md:grid-cols-3">
         <Field label="搜索公司或方向">
@@ -447,14 +475,27 @@ export function ReferralPage() {
           <Pick
             value={company}
             onChange={setCompany}
-            options={['全部公司', ...companies.map((x) => x.name)]}
+            options={[
+              '全部公司',
+              ...new Set([...companies.map((x) => x.name), ...records.map(recordCompany)]),
+            ]}
           />
         </Field>
         <Field label="筛选方向">
           <Pick
             value={direction}
             onChange={setDirection}
-            options={['全部方向', '研发', '产品', '设计', '算法', '运营']}
+            options={[
+              '全部方向',
+              ...new Set([
+                '研发',
+                '产品',
+                '设计',
+                '算法',
+                '运营',
+                ...records.flatMap((x) => (x.role ? [x.role] : [])),
+              ]),
+            ]}
           />
         </Field>
       </div>
@@ -478,7 +519,7 @@ export function ReferralPage() {
                 onClick={async () => {
                   try {
                     await navigator.clipboard.writeText(x.code);
-                    toast.success('已复制演示内推码');
+                    toast.success(apiMode ? '已复制内推码' : '已复制演示内推码');
                   } catch {
                     toast.error('复制失败，请手动选择内推码');
                   }
@@ -513,8 +554,12 @@ export function ReferralPage() {
       {!filtered.length && (
         <EmptyState
           kind="referrals"
-          title="没有匹配的内推"
-          description="调整公司或方向筛选。"
+          title={apiMode ? '暂无已收录的公开内推信息' : '没有匹配的内推'}
+          description={
+            apiMode
+              ? '你可以录入真实公司、岗位和内推码，建立自己的进度记录。'
+              : '调整公司或方向筛选。'
+          }
           action={
             <Button
               onClick={() => {
@@ -546,15 +591,38 @@ export function ReferralPage() {
             }
           />
         )}
-        {records.map((x) => (
+        {records.length > 0 && !filteredRecords.length && (
+          <p className="py-6 text-sm text-muted-foreground">当前筛选条件没有匹配的个人内推进度。</p>
+        )}
+        {filteredRecords.map((x) => (
           <Row key={x.id} className="flex-wrap">
             <div>
               <h3 className="text-sm font-medium">
-                {getCompany(x.companyId).name} · {x.title}
+                {recordCompany(x)} · {x.title}
               </h3>
               <p className="mt-2 text-xs text-muted-foreground">
                 {x.contact || '尚未填写联系人'} · {x.date} · {x.stage}
               </p>
+              {x.role && <p className="mt-2 text-xs text-muted-foreground">岗位方向：{x.role}</p>}
+              {x.code && (
+                <div className="mt-2 flex items-center gap-2 text-xs">
+                  <code>{x.code}</code>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(x.code!);
+                        toast.success('已复制内推码');
+                      } catch {
+                        toast.error('复制失败，请手动选择内推码');
+                      }
+                    }}
+                  >
+                    复制内推码
+                  </Button>
+                </div>
+              )}
               <p className="mt-2 whitespace-pre-wrap text-xs">{x.note}</p>
             </div>
             <div className="flex gap-2">
@@ -600,13 +668,13 @@ export function ReferralPage() {
         open={!!draft}
         onClose={() => setDraft(null)}
         title={draft?.id ? '编辑内推进度' : '新增内推进度'}
-        description="保存本地记录，不发送联系请求。"
+        description="记录自己的真实内推信息和进度。"
       >
         <form
           className="grid gap-4"
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault();
-            save();
+            await save();
           }}
         >
           {draft && (
@@ -622,14 +690,40 @@ export function ReferralPage() {
                 <select
                   className="h-10 rounded-md border bg-background px-2"
                   value={draft.companyId}
-                  onChange={(e) => setDraft({ ...draft, companyId: e.target.value })}
+                  onChange={(e) => setDraft({ ...draft, companyId: e.target.value, company: '' })}
                 >
+                  <option value="">手动填写公司</option>
                   {companies.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
                     </option>
                   ))}
                 </select>
+              </Field>
+              {!draft.companyId && (
+                <Field label="公司名称">
+                  <Input
+                    value={draft.company ?? ''}
+                    maxLength={120}
+                    onChange={(e) => setDraft({ ...draft, company: e.target.value })}
+                    placeholder="填写实际联系的公司"
+                  />
+                </Field>
+              )}
+              <Field label="岗位方向">
+                <Input
+                  value={draft.role ?? ''}
+                  maxLength={120}
+                  onChange={(e) => setDraft({ ...draft, role: e.target.value })}
+                />
+              </Field>
+              <Field label="真实内推码（选填）">
+                <Input
+                  value={draft.code ?? ''}
+                  maxLength={200}
+                  onChange={(e) => setDraft({ ...draft, code: e.target.value })}
+                  placeholder="填写从真实联系人获取的内推码"
+                />
               </Field>
               <Field label="联系人备注">
                 <Input

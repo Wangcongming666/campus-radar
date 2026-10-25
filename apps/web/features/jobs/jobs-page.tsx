@@ -51,6 +51,9 @@ import {
   ProgressBar,
   SectionLink,
 } from '@/components/shared';
+import { CatalogImport } from '@/components/catalog-import';
+import { useSyncExternalStore } from 'react';
+import { subscribeCatalog, getCatalogRevision } from '@/lib/catalog';
 import { jobs, companies, getCompany, type Job } from '@/lib/data';
 import { filterJobs, deadlineDays } from '@/lib/domain';
 import { useRadarStore } from '@/lib/store';
@@ -93,7 +96,7 @@ export function JobCard({ job, compact = false }: { job: Job; compact?: boolean 
               {job.city}
             </span>
             <i />
-            <span>{job.education}及以上</span>
+            <span>{job.education}{!['学历未注明', '不限'].includes(job.education) && '及以上'}</span>
             <i />
             <span>{job.requirements.join(' ').match(/20\d{2}\s*届/)?.[0] || '届别未明确'}</span>
           </div>
@@ -134,7 +137,7 @@ export function JobCard({ job, compact = false }: { job: Job; compact?: boolean 
           )}
         >
           <Clock className="size-3" />
-          {days === null ? '持续招聘' : days < 0 ? '已截止' : `${days} 天后截止`}
+          {days === null ? (process.env.NEXT_PUBLIC_DATA_MODE === 'api' ? '截止时间未注明' : '持续招聘') : days < 0 ? '已截止' : `${days} 天后截止`}
           <span className="text-subtle ml-2 hidden sm:inline">· {job.posted}更新</span>
         </span>
         <div className="flex items-center gap-1">
@@ -152,6 +155,7 @@ export function JobCard({ job, compact = false }: { job: Job; compact?: boolean 
   );
 }
 export default function JobsPage() {
+  const catalogRevision = useSyncExternalStore(subscribeCatalog, getCatalogRevision, () => 0);
   const params = useSearchParams(),
     router = useRouter();
   const [view, setView] = useState(params.get('view') ?? 'list'),
@@ -174,7 +178,7 @@ export default function JobsPage() {
     .filter((event) => event.date === today && !event.completed)
     .sort((a, b) => a.time.localeCompare(b.time));
   const { data } = useQuery({
-    queryKey: ['demo-jobs'],
+    queryKey: ['catalog-jobs', catalogRevision],
     queryFn: async () => {
       await new Promise((resolve) => setTimeout(resolve, 250));
       return jobs;
@@ -314,12 +318,15 @@ export default function JobsPage() {
         title="岗位广场"
         description="把每一份努力，投向更适合你的机会。"
         action={
-          <Button variant="outline" size="sm" asChild>
-            <Link href="/subscriptions">
-              <Bell />
-              订阅岗位
-            </Link>
-          </Button>
+          <div className="flex gap-2">
+            <CatalogImport />
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/subscriptions">
+                <Bell />
+                订阅岗位
+              </Link>
+            </Button>
+          </div>
         }
       />
       <div className={styles.summary}>
@@ -331,7 +338,7 @@ export default function JobsPage() {
           </strong>
           <p className={styles.summaryNote}>
             <ArrowUpRight className="size-3" />
-            覆盖 6 个岗位方向
+            {process.env.NEXT_PUBLIC_DATA_MODE === 'api' ? '岗位方向以官方来源为准' : '覆盖 6 个岗位方向'}
           </p>
         </div>
         <div className={styles.summaryItem}>
@@ -482,12 +489,20 @@ export default function JobsPage() {
             <Panel>
               <EmptyState
                 kind="jobs"
-                title="还没有探测到匹配的岗位"
-                description="试试放宽城市或方向条件，让更多机会进入雷达。"
+                title={jobs.length ? '还没有探测到匹配的岗位' : '目录中还没有真实岗位'}
+                description={
+                  jobs.length
+                    ? '试试放宽城市或方向条件，让更多机会进入雷达。'
+                    : '录入你从招聘官网找到的岗位，或导入带有原始来源链接的 JSON。'
+                }
                 action={
-                  <Button variant="outline" onClick={reset}>
-                    清空筛选
-                  </Button>
+                  jobs.length ? (
+                    <Button variant="outline" onClick={reset}>
+                      清空筛选
+                    </Button>
+                  ) : (
+                    <CatalogImport />
+                  )
                 }
               />
             </Panel>

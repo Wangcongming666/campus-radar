@@ -23,7 +23,7 @@ export interface Company {
   size: string;
   tags: string[];
 }
-export const companies: Company[] = [
+const mock_companies: Company[] = [
   {
     id: 'tencent',
     slug: 'tencent',
@@ -136,10 +136,15 @@ export interface Job {
   deadline: string | null;
   posted: string;
   highlight?: string;
+  canonicalUrl?: string;
+  sourceName?: string;
+  collectedAt?: string | null;
+  graduationYears?: number[];
+  status?: string;
   description: string[];
   requirements: string[];
 }
-export const jobs: Job[] = [
+const mock_jobs: Job[] = [
   {
     id: 'job-1',
     title: '前端开发工程师',
@@ -388,7 +393,7 @@ export interface Application {
   updatedAt?: string;
   history?: { id: string; from: Stage; to: Stage; at: string }[];
 }
-export const initialApplications: Application[] = [
+const mock_initialApplications: Application[] = [
   {
     id: 'app-1',
     jobId: 'job-1',
@@ -470,7 +475,7 @@ export interface Experience {
   excerpt: string;
   sections: { title: string; content: string }[];
 }
-export const experiences: Experience[] = [
+const mock_experiences: Experience[] = [
   {
     id: 'exp-1',
     companyId: 'tencent',
@@ -662,7 +667,7 @@ export interface Question {
   answer: string;
   companies: string[];
 }
-export const questions: Question[] = [
+const mock_questions: Question[] = [
   {
     id: 'q-1',
     title: '说说浏览器的事件循环机制',
@@ -744,7 +749,7 @@ export const questions: Question[] = [
     companies: ['bytedance', 'ant'],
   },
 ];
-export const chapters = [
+const mock_chapters = [
   {
     id: 'js',
     title: 'JavaScript 核心原理',
@@ -800,6 +805,50 @@ export const chapters = [
     sections: ['了解团队', '了解工作', '了解成长', '确认下一步'],
   },
 ];
+export type Chapter = (typeof mock_chapters)[number];
+const apiMode = process.env.NEXT_PUBLIC_DATA_MODE === 'api';
+export let companies: Company[] = apiMode ? [] : mock_companies;
+export let jobs: Job[] = apiMode ? [] : mock_jobs;
+export let initialApplications: Application[] = apiMode ? [] : mock_initialApplications;
+export let experiences: Experience[] = apiMode ? [] : mock_experiences;
+export let questions: Question[] = apiMode ? [] : mock_questions;
+export let chapters: Chapter[] = apiMode ? [] : mock_chapters;
+export type Catalog = {
+  companies: Company[];
+  jobs: Job[];
+  experiences: Experience[];
+  questions: Question[];
+  chapters: Chapter[];
+};
+/** Only the browser can hydrate this UI catalog. Server requests never mutate module state. */
+export function setApiCatalog(value: Catalog) {
+  if (typeof window === 'undefined') return;
+  companies = value.companies;
+  jobs = value.jobs;
+  experiences = value.experiences;
+  questions = value.questions;
+  chapters = value.chapters;
+}
+export function resetApiCatalog() {
+  if (typeof window === 'undefined') return;
+  companies = [];
+  jobs = [];
+  experiences = [];
+  questions = [];
+  chapters = [];
+}
+const unavailableCompany: Company = {
+  id: '',
+  slug: '',
+  name: '公司信息未提供',
+  en: '',
+  initial: '?',
+  color: 'blue',
+  industry: '',
+  description: '',
+  size: '',
+  tags: [],
+};
 export const getCompany = (id: string) =>
-  companies.find((c) => c.id === id || c.slug === id) ?? companies[0];
+  companies.find((c) => c.id === id || c.slug === id) ?? unavailableCompany;
 export const getJob = (id: string) => jobs.find((j) => j.id === id);

@@ -38,6 +38,11 @@ it('marks absent profile dimensions unknown instead of inventing a score', () =>
   expect(result.score).toBeNull();
   expect(result.dimensions.every((d) => d.value === null)).toBe(true);
 });
+it('does not score an unclassified official role as a mismatch', () => {
+  const result = matchJob({ ...jobs[0], role: '方向未分类' }, { roles: ['前端开发'] });
+  expect(result.dimensions.find((dimension) => dimension.id === 'role')?.value).toBeNull();
+  expect(result.score).toBeNull();
+});
 it('parses skills, education and actual project lines from provided text', () => {
   expect(
     parseProfileText('2028届 硕士\n技能：Java，SQL\n项目：检索服务\n实习：后端研发'),
@@ -74,4 +79,20 @@ it('supports graduation filtering using actual requirements and orders relative 
   expect(filterJobYear(jobs[0], '2026')).toBe(false);
   expect(filterJobYear(jobs[0], '2027')).toBe(true);
   expect(postedOrder('2小时前')).toBeLessThan(postedOrder('昨天'));
+});
+
+it('uses structured graduation years before legacy requirement text', () => {
+  const job = { ...jobs[0], graduationYears: [2028, 2029], requirements: ['2027届毕业生'] };
+  expect(filterJobYear(job, '2027')).toBe(false);
+  expect(filterJobYear(job, '2028')).toBe(true);
+  expect(matchJob(job, { year: '2029' }).dimensions.find((d) => d.id === 'year')?.value).toBe(100);
+  expect(matchJob(job, { year: '2027' }).dimensions.find((d) => d.id === 'year')?.value).toBe(0);
+});
+it('sorts actual ISO catalog publication timestamps newest first', () => {
+  const timestamps = ['2026-10-20T12:00:00Z', '2026-10-24T09:00:00+08:00', 'invalid'];
+  expect([...timestamps].sort((a, b) => postedOrder(a) - postedOrder(b))).toEqual([
+    timestamps[1],
+    timestamps[0],
+    timestamps[2],
+  ]);
 });

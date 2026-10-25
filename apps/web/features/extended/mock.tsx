@@ -27,6 +27,24 @@ import {
 } from '@/lib/interview-domain';
 import { downloadInterviewBlob, useInterviewLocal } from '@/lib/interview-repository';
 import { Field, Modal, Pick, Row } from './common';
+import { isApiMode, subscribeWorkspace, workspaceOwner } from '@/lib/api/workspace-client';
+import { createCoalescedDraftWriter, type DraftSaveStatus } from '@/lib/coalesced-draft-writer';
+import { questions as catalogQuestions } from '@/lib/data';
+import { toast } from 'sonner';
+
+const pendingDrafts = new Map<string, PracticeDraft>();
+let draftOwner = workspaceOwner();
+let draftGeneration = 0;
+subscribeWorkspace(() => {
+  const owner = workspaceOwner();
+  if (owner !== draftOwner) {
+    draftOwner = owner;
+    draftGeneration++;
+    pendingDrafts.clear();
+  }
+});
+const practiceScope = () =>
+  isApiMode() ? (workspaceOwner() ? `${workspaceOwner()}:${draftGeneration}` : null) : 'local';
 
 const initialConfig: PracticeConfig = {
   role: '前端开发',
@@ -41,14 +59,61 @@ export function MockPage() {
   const reports = useInterviewLocal<PracticeReport[]>('mock-reports-v2', [], isPracticeReports);
   const [view, setView] = useState('开始练习');
   const [phase, setPhase] = useState<'config' | 'active' | 'report'>('config');
-  const [working, setWorking] = useState<PracticeDraft | null>(null);
+  const scope = useRef(practiceScope());
+  const [working, setWorking] = useState<PracticeDraft | null>(() =>
+    scope.current ? (pendingDrafts.get(scope.current) ?? null) : null,
+  );
   const [viewing, setViewing] = useState<PracticeReport | null>(null);
   const [now, setNow] = useState(0);
   const [discard, setDiscard] = useState(false);
+  const [transitionBusy, setTransitionBusy] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<DraftSaveStatus>(working ? 'pending' : 'saved');
   const finishing = useRef(false);
+  const loadedDraft = useRef(false);
+  const saveDraft = useRef(drafts.save);
+  const workingRef = useRef(working);
+  saveDraft.current = drafts.save;
+  workingRef.current = working;
+  const [writer] = useState(() =>
+    createCoalescedDraftWriter<PracticeDraft | null>({
+      save: (value) =>
+        scope.current === practiceScope() ? saveDraft.current(value) : Promise.resolve(false),
+      scope: () => (scope.current === practiceScope() ? scope.current : null),
+      onStatus: setSaveStatus,
+      onConfirmed: (value) => {
+        if (scope.current && (value === null || pendingDrafts.get(scope.current) === value))
+          pendingDrafts.delete(scope.current);
+      },
+      initial: working ?? undefined,
+      delay: 1500,
+    }),
+  );
   useEffect(() => {
-    if (drafts.ready) setWorking(drafts.value);
+    if (!drafts.ready) {
+      loadedDraft.current = false;
+      return;
+    }
+    if (!loadedDraft.current) {
+      loadedDraft.current = true;
+      const value = (scope.current ? pendingDrafts.get(scope.current) : null) ?? drafts.value;
+      workingRef.current = value;
+      setWorking(value);
+    }
   }, [drafts.ready, drafts.value]);
+  useEffect(() => {
+    writer.start();
+    const warn = (event: BeforeUnloadEvent) => {
+      if (writer.dirty()) {
+        event.preventDefault();
+        event.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => {
+      writer.stop();
+      window.removeEventListener('beforeunload', warn);
+    };
+  }, [writer]);
   useEffect(() => {
     setNow(Date.now());
     if (phase !== 'active' || !working || working.startedAt === null) return;
@@ -62,78 +127,167 @@ export function MockPage() {
           elapsedPracticeSeconds(working.elapsed, working.startedAt, now || Date.now()),
       )
     : 0;
-  const finish = useCallback(() => {
-    if (!working || finishing.current || !reports.ready) return;
+  const persistWorking = useCallback(
+    async (next: PracticeDraft | null): Promise<boolean> => {
+      if (!scope.current || scope.current !== practiceScope()) return false;
+      if (next) {
+        workingRef.current = next;
+        setWorking(next);
+        pendingDrafts.set(scope.current, next);
+      }
+      writer.edit(next);
+      return writer.flush();
+    },
+    [writer],
+  );
+  const finish = useCallback(async () => {
+    const current = workingRef.current;
+    if (
+      !current ||
+      finishing.current ||
+      !reports.ready ||
+      !scope.current ||
+      scope.current !== practiceScope()
+    )
+      return false;
     finishing.current = true;
-    const report = completePractice(working, Date.now());
-    if (!reports.save((items) => [report, ...items.filter((item) => item.id !== report.id)])) {
+    setTransitionBusy(true);
+    try {
+      if (!(await persistWorking(current))) return false;
+      const report = completePractice(current, Date.now());
+      if (scope.current !== practiceScope()) return false;
+      if (
+        !(await reports.save((items) => [report, ...items.filter((item) => item.id !== report.id)]))
+      )
+        return false;
+      if (scope.current !== practiceScope() || !(await persistWorking(null))) return false;
+      workingRef.current = null;
+      setWorking(null);
+      setViewing(report);
+      setPhase('report');
+      setView('开始练习');
+      return true;
+    } finally {
       finishing.current = false;
-      return;
+      setTransitionBusy(false);
     }
-    if (!drafts.save(null)) {
-      finishing.current = false;
-      return;
-    }
-    setWorking(null);
-    setViewing(report);
-    setPhase('report');
-    setView('开始练习');
-  }, [working, reports.ready, reports.save, drafts.save]);
+  }, [reports.ready, reports.save, persistWorking]);
   useEffect(() => {
-    if (phase === 'active' && working?.startedAt !== null && remaining === 0) finish();
+    if (phase === 'active' && working?.startedAt != null && remaining === 0) void finish();
   }, [phase, working?.startedAt, remaining, finish]);
   function update(next: PracticeDraft) {
+    if (finishing.current || !scope.current || scope.current !== practiceScope()) return;
+    workingRef.current = next;
     setWorking(next);
-    drafts.save(next);
+    pendingDrafts.set(scope.current, next);
+    writer.edit(next);
   }
-  function pause(exit = false) {
-    if (!working) return;
-    const next = {
-      ...working,
-      elapsed: elapsedPracticeSeconds(working.elapsed, working.startedAt, Date.now()),
-      startedAt: null,
-    };
-    setWorking(next);
-    if (drafts.save(next) && exit) setPhase('config');
-  }
-  function resume() {
-    const previous = working ?? drafts.value;
-    if (!previous) return;
-    const next = { ...previous, startedAt: previous.startedAt ?? Date.now() };
-    if (drafts.save(next)) {
+  async function pause(exit = false) {
+    const current = workingRef.current;
+    if (!current || finishing.current) return false;
+    finishing.current = true;
+    setTransitionBusy(true);
+    try {
+      const next = {
+        ...current,
+        elapsed: elapsedPracticeSeconds(current.elapsed, current.startedAt, Date.now()),
+        startedAt: null,
+      };
+      if (!(await persistWorking(next))) return false;
+      if (exit) setPhase('config');
+      return true;
+    } finally {
       finishing.current = false;
-      setNow(Date.now());
-      setWorking(next);
-      setPhase('active');
-      setView('开始练习');
+      setTransitionBusy(false);
     }
   }
-  function start() {
-    const questions = buildPracticeQuestions(config.value);
-    const next: PracticeDraft = {
-      id: crypto.randomUUID(),
-      config: config.value,
-      questions,
-      answers: questions.map(() => ''),
-      index: 0,
-      elapsed: 0,
-      startedAt: Date.now(),
-      createdAt: new Date().toISOString(),
-    };
-    if (drafts.save(next)) {
-      finishing.current = false;
+  async function resume() {
+    const previous = workingRef.current ?? drafts.value;
+    if (!previous || finishing.current) return false;
+    finishing.current = true;
+    setTransitionBusy(true);
+    try {
+      const next = { ...previous, startedAt: previous.startedAt ?? Date.now() };
+      if (!(await persistWorking(next))) return false;
       setNow(Date.now());
-      setWorking(next);
-      setViewing(null);
       setPhase('active');
+      setView('开始练习');
+      return true;
+    } finally {
+      finishing.current = false;
+      setTransitionBusy(false);
+    }
+  }
+  async function start() {
+    if (finishing.current) return;
+    const questions = isApiMode()
+      ? catalogQuestions
+          .slice(0, config.value.minutes >= 45 ? 7 : config.value.minutes >= 30 ? 5 : 3)
+          .map((q) => ({
+            id: q.id,
+            title: q.title,
+            reference: q.answer,
+            keywords: q.topic ? [q.topic] : [],
+          }))
+      : buildPracticeQuestions(config.value);
+    if (!questions.length) {
+      toast.error('题库中还没有已发布题目，请先添加真实题目。');
+      return;
+    }
+    finishing.current = true;
+    setTransitionBusy(true);
+    try {
+      const next: PracticeDraft = {
+        id: crypto.randomUUID(),
+        config: config.value,
+        questions,
+        answers: questions.map(() => ''),
+        index: 0,
+        elapsed: 0,
+        startedAt: Date.now(),
+        createdAt: new Date().toISOString(),
+      };
+      if (await persistWorking(next)) {
+        setNow(Date.now());
+        setViewing(null);
+        setPhase('active');
+      }
+    } finally {
+      finishing.current = false;
+      setTransitionBusy(false);
     }
   }
   function answer(text: string) {
-    if (working)
+    const current = workingRef.current;
+    if (current && current.startedAt !== null)
       update({
-        ...working,
-        answers: working.answers.map((a, i) => (i === working.index ? text : a)),
+        ...current,
+        answers: current.answers.map((a, i) => (i === current.index ? text : a)),
       });
+  }
+  async function retryCurrentDraft() {
+    const current = workingRef.current;
+    if (!current || finishing.current) return false;
+    return persistWorking(current);
+  }
+  async function discardCurrentDraft() {
+    if (finishing.current) return;
+    finishing.current = true;
+    setTransitionBusy(true);
+    try {
+      if (await persistWorking(null)) {
+        workingRef.current = null;
+        setWorking(null);
+        setDiscard(false);
+      }
+    } finally {
+      finishing.current = false;
+      setTransitionBusy(false);
+    }
+  }
+  async function persistConfig(next: PracticeConfig) {
+    if (!scope.current || scope.current !== practiceScope()) return false;
+    return config.save(next);
   }
   const question = working?.questions[working.index];
   const error = config.error || drafts.error || reports.error;
@@ -175,16 +329,19 @@ export function MockPage() {
           <PageTabs
             items={['开始练习', '练习历史']}
             value={view}
-            onChange={(next) => {
-              if (phase === 'active') pause();
+            onChange={async (next) => {
+              if (phase === 'active' && !(await pause())) return;
               setView(next);
             }}
           />
         }
       />
       <DemoNotice>
-        题目来自内置练习库，所选公司仅改变假设业务场景，不代表真实面试风格。反馈由本地关键词和表达标记规则生成，不调用
-        AI，也不判断技术正确性或预测录用结果。回答、进度和报告保存在当前浏览器。
+        {isApiMode()
+          ? '题目来自已发布的真实题库。'
+          : '题目来自内置练习库，所选公司仅改变假设业务场景，不代表真实面试风格。'}
+        反馈由本地关键词和表达标记规则生成，不调用 AI，也不判断技术正确性或预测录用结果。
+        {isApiMode() ? '回答、进度和报告保存在当前账户。' : '回答、进度和报告保存在当前浏览器。'}
       </DemoNotice>
       {error && (
         <p
@@ -193,6 +350,32 @@ export function MockPage() {
         >
           {error}
         </p>
+      )}
+      {working && (
+        <div className="flex flex-wrap items-center gap-3">
+          <p
+            role="status"
+            aria-label="练习草稿保存状态"
+            aria-live="polite"
+            className="text-xs text-muted-foreground"
+          >
+            {saveStatus === 'saved'
+              ? '当前草稿已保存'
+              : saveStatus === 'pending'
+                ? '当前回答有未保存修改，停止输入后自动保存。'
+                : saveStatus === 'saving'
+                  ? '正在保存当前草稿…'
+                  : '草稿尚未保存，当前回答已保留。请重试。'}
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={transitionBusy || saveStatus === 'saved' || saveStatus === 'saving'}
+            onClick={retryCurrentDraft}
+          >
+            {saveStatus === 'failed' ? '重试保存当前草稿' : '保存当前草稿'}
+          </Button>
+        </div>
       )}
       {!ready ? (
         <Panel>
@@ -234,9 +417,10 @@ export function MockPage() {
                   size="sm"
                   variant="outline"
                   aria-label={`删除${item.id}报告`}
-                  onClick={() => {
+                  onClick={async () => {
+                    if (!scope.current || scope.current !== practiceScope()) return;
                     if (
-                      reports.save((items) => items.filter((x) => x.id !== item.id)) &&
+                      (await reports.save((items) => items.filter((x) => x.id !== item.id))) &&
                       viewing?.id === item.id
                     ) {
                       setViewing(null);
@@ -261,7 +445,7 @@ export function MockPage() {
                 <Pick
                   label="目标方向"
                   value={config.value.role}
-                  onChange={(role) => config.save({ ...config.value, role })}
+                  onChange={async (role) => await persistConfig({ ...config.value, role })}
                   options={['前端开发', '后端开发', '产品经理']}
                 />
               </Field>
@@ -269,7 +453,7 @@ export function MockPage() {
                 <Pick
                   label="模拟公司"
                   value={config.value.company}
-                  onChange={(company) => config.save({ ...config.value, company })}
+                  onChange={async (company) => await persistConfig({ ...config.value, company })}
                   options={['腾讯', '字节跳动', '阿里巴巴', '美团', '通用风格']}
                 />
               </Field>
@@ -277,7 +461,7 @@ export function MockPage() {
                 <Pick
                   label="面试轮次"
                   value={config.value.round}
-                  onChange={(round) => config.save({ ...config.value, round })}
+                  onChange={async (round) => await persistConfig({ ...config.value, round })}
                   options={['技术一面', '技术二面', 'HR 面试']}
                 />
               </Field>
@@ -285,7 +469,7 @@ export function MockPage() {
                 <Pick
                   label="题目难度"
                   value={config.value.level}
-                  onChange={(level) => config.save({ ...config.value, level })}
+                  onChange={async (level) => await persistConfig({ ...config.value, level })}
                   options={['基础热身', '标准难度', '深度挑战']}
                 />
               </Field>
@@ -293,8 +477,8 @@ export function MockPage() {
                 <Pick
                   label="练习时长"
                   value={`${config.value.minutes} 分钟`}
-                  onChange={(minutes) =>
-                    config.save({ ...config.value, minutes: parseInt(minutes) })
+                  onChange={async (minutes) =>
+                    await persistConfig({ ...config.value, minutes: parseInt(minutes) })
                   }
                   options={['15 分钟', '30 分钟', '45 分钟']}
                 />
@@ -303,9 +487,9 @@ export function MockPage() {
                 文字作答始终可用。浏览器支持中文离线识别时，可使用语音转文字和本机朗读。
               </div>
             </div>
-            <Button className="mt-7" disabled={!!working} onClick={start}>
+            <Button className="mt-7" disabled={!!working || transitionBusy} onClick={start}>
               <Play className="size-4" />
-              开始本地模拟
+              {isApiMode() ? '开始模拟练习' : '开始本地模拟'}
             </Button>
             {working && (
               <div className="mt-6 rounded-xl border border-primary/30 p-4">
@@ -316,7 +500,9 @@ export function MockPage() {
                   {working.startedAt === null ? '已暂停' : '计时仍在继续'}
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  <Button onClick={resume}>恢复上次练习</Button>
+                  <Button disabled={transitionBusy} onClick={resume}>
+                    恢复上次练习
+                  </Button>
                   <Button variant="outline" onClick={() => setDiscard(true)}>
                     放弃未完成练习
                   </Button>
@@ -377,7 +563,7 @@ export function MockPage() {
               aria-label="本题回答"
               className="min-h-64 leading-7"
               maxLength={20000}
-              disabled={working.startedAt === null}
+              disabled={transitionBusy || working.startedAt === null}
               value={working.answers[working.index]}
               onChange={(e) => answer(e.target.value)}
               placeholder="先给出结论，再展开原理、例子和验证方法。"
@@ -385,30 +571,36 @@ export function MockPage() {
             <div className="mt-4">
               <InterviewSpeechControls
                 text={question.title}
-                disabled={working.startedAt === null}
+                disabled={transitionBusy || working.startedAt === null}
                 onTranscript={(text) => answer(`${working.answers[working.index]}${text}`)}
               />
             </div>
             <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
               <span className="text-xs text-muted-foreground">
-                {working.answers[working.index].length} / 20000 字 · 自动保存于本机
+                {working.answers[working.index].length} / 20000 字 · 停止输入后自动保存
               </span>
               <div className="flex gap-2">
                 {working.index > 0 && (
                   <Button
                     variant="outline"
+                    disabled={transitionBusy}
                     onClick={() => update({ ...working, index: working.index - 1 })}
                   >
                     上一题
                   </Button>
                 )}
                 {working.index < working.questions.length - 1 ? (
-                  <Button onClick={() => update({ ...working, index: working.index + 1 })}>
+                  <Button
+                    disabled={transitionBusy}
+                    onClick={() => update({ ...working, index: working.index + 1 })}
+                  >
                     下一题
                     <ArrowRight className="size-4" />
                   </Button>
                 ) : (
-                  <Button onClick={finish}>结束并查看报告</Button>
+                  <Button disabled={transitionBusy} onClick={finish}>
+                    结束并查看报告
+                  </Button>
                 )}
               </div>
             </div>
@@ -419,6 +611,7 @@ export function MockPage() {
                 <button
                   key={i}
                   className="flex w-full items-center justify-between rounded-lg border border-border p-3 text-xs hover:bg-raised"
+                  disabled={transitionBusy}
                   onClick={() => update({ ...working, index: i })}
                 >
                   <span>题目 {i + 1}</span>
@@ -429,6 +622,7 @@ export function MockPage() {
             <div className="mt-5 grid gap-3">
               <Button
                 variant="outline"
+                disabled={transitionBusy}
                 onClick={() => (working.startedAt === null ? resume() : pause())}
               >
                 {working.startedAt === null ? (
@@ -438,10 +632,10 @@ export function MockPage() {
                 )}
                 {working.startedAt === null ? '继续练习' : '暂停练习'}
               </Button>
-              <Button variant="outline" onClick={() => pause(true)}>
+              <Button variant="outline" disabled={transitionBusy} onClick={() => pause(true)}>
                 保存退出
               </Button>
-              <Button variant="outline" onClick={finish}>
+              <Button variant="outline" disabled={transitionBusy} onClick={finish}>
                 提前结束
               </Button>
             </div>
@@ -575,15 +769,7 @@ export function MockPage() {
           <Button variant="outline" onClick={() => setDiscard(false)}>
             继续保留
           </Button>
-          <Button
-            variant="destructive"
-            onClick={() => {
-              if (drafts.save(null)) {
-                setWorking(null);
-                setDiscard(false);
-              }
-            }}
-          >
+          <Button variant="destructive" disabled={transitionBusy} onClick={discardCurrentDraft}>
             确认放弃练习
           </Button>
         </div>

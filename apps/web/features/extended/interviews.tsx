@@ -40,6 +40,7 @@ import {
 import { deleteInterviewFile, useInterviewLocal } from '@/lib/interview-repository';
 import { isResumeLibrary, type ResumeVersion } from '@/lib/resume-files';
 import { Field, Modal, Pick } from './common';
+import { isApiMode, readWorkspaceValue, saveWorkspaceValue } from '@/lib/api/workspace-client';
 
 const emptyRound: InterviewRound = {
   id: '',
@@ -81,7 +82,7 @@ export function TimelinePage({ id }: { id: string }) {
   if (!job || !app) return <MissingApplication />;
   const company = getCompany(job.companyId);
   const resume = resumes.value.find((x) => x.id === app.resumeId);
-  function saveRound() {
+  async function saveRound() {
     if (!edit?.title.trim()) return;
     const item = {
       ...edit,
@@ -89,7 +90,7 @@ export function TimelinePage({ id }: { id: string }) {
       id: edit.id || `round-${crypto.randomUUID()}`,
     };
     if (
-      rounds.save((items) =>
+      await rounds.save((items) =>
         items.some((x) => x.id === item.id)
           ? items.map((x) => (x.id === item.id ? item : x))
           : [...items, item],
@@ -97,7 +98,7 @@ export function TimelinePage({ id }: { id: string }) {
     ) {
       setExpanded(item.id);
       setEdit(null);
-      toast.success('面试轮次已保存在本机');
+      toast.success('面试轮次已保存');
     }
   }
   async function deleteRound() {
@@ -107,7 +108,9 @@ export function TimelinePage({ id }: { id: string }) {
     const previous = rounds.value;
     const reviewKey = `radar-extended-interview-review-v2-${id}-${deleting.id}`;
     try {
-      const raw = localStorage.getItem(reviewKey);
+      const raw = isApiMode()
+        ? JSON.stringify(readWorkspaceValue(reviewKey.replace('radar-extended-', ''), null))
+        : localStorage.getItem(reviewKey);
       let audioId: string | undefined;
       try {
         const parsed: unknown = raw ? JSON.parse(raw) : null;
@@ -115,15 +118,25 @@ export function TimelinePage({ id }: { id: string }) {
       } catch {
         /* The malformed metadata is removed with the explicitly deleted round. */
       }
-      if (!rounds.save((items) => items.filter((x) => x.id !== deleting.id))) return;
+      if (!(await rounds.save((items) => items.filter((x) => x.id !== deleting.id)))) return;
       try {
+        if (
+          isApiMode() &&
+          !(await saveWorkspaceValue(reviewKey.replace('radar-extended-', ''), null))
+        )
+          throw new Error('复盘清理失败，请重试。');
         if (audioId) await deleteInterviewFile(audioId);
-        localStorage.removeItem(reviewKey);
+        if (!isApiMode()) localStorage.removeItem(reviewKey);
       } catch (e) {
-        rounds.save(previous);
+        await rounds.save(previous);
+        if (isApiMode() && raw) {
+          const backup: unknown = JSON.parse(raw);
+          if (isInterviewReview(backup))
+            await saveWorkspaceValue(reviewKey.replace('radar-extended-', ''), backup);
+        }
         throw e;
       }
-      useRadarStore.getState().setNote(`review-${id}-${deleting.id}`, '');
+      if (!isApiMode()) await useRadarStore.getState().setNote(`review-${id}-${deleting.id}`, '');
       window.dispatchEvent(new CustomEvent('radar-local-change', { detail: { key: reviewKey } }));
       setDeleting(null);
       toast.success('轮次、复盘与录音已删除');
@@ -154,7 +167,8 @@ export function TimelinePage({ id }: { id: string }) {
         }
       />
       <DemoNotice>
-        此时间线由你手动维护并保存在本机，与投递阶段和企业招聘进度独立。记录轮次、准备问题、笔记，再进入对应轮次的录音与复盘。
+        此时间线由你手动维护{isApiMode() ? '并保存在当前账户' : '并保存在本机'}
+        ，与投递阶段和企业招聘进度独立。记录轮次、准备问题、笔记，再进入对应轮次的录音与复盘。
       </DemoNotice>
       {(rounds.error || error) && (
         <p
@@ -407,34 +421,34 @@ export function ReviewPage({ id, round = 'round-1' }: { id: string; round?: stri
     setDraft((previous) => ({ ...previous, ...patch }));
     setChanged(true);
   }
-  function commit(next: InterviewReview, notify = true): boolean {
+  async function commit(next: InterviewReview, notify = true): Promise<boolean> {
     if (!roundInfo && !title.trim()) {
       setError('请先填写轮次名称。');
       return false;
     }
     if (
       !roundInfo &&
-      !rounds.save((items) => [
+      !(await rounds.save((items) => [
         ...items,
         { ...emptyRound, id: round, title: title.trim(), status: '已完成' },
-      ])
+      ]))
     )
       return false;
     const value = { ...next, savedAt: new Date().toISOString() };
-    if (!saved.save(value)) return false;
-    setNote(`review-${id}-${round}`, value.note);
+    if (!(await saved.save(value))) return false;
+    if (!isApiMode()) await setNote(`review-${id}-${round}`, value.note);
     setDraft(value);
     setChanged(false);
     setError('');
-    if (notify) toast.success('转写、笔记与自评已保存在本机');
+    if (notify) toast.success('转写、笔记与自评已保存');
     return true;
   }
-  function generate() {
+  async function generate() {
     if (!draft.transcript.trim()) {
       setError('请先输入、导入或离线识别面试文字。');
       return;
     }
-    commit({
+    await commit({
       ...draft,
       analysis: analyzeAnswer(draft.transcript, reviewReference),
       analyzedText: draft.transcript,
@@ -469,7 +483,8 @@ export function ReviewPage({ id, round = 'round-1' }: { id: string; round?: stri
         }
       />
       <DemoNotice>
-        音频与转写仅保存在本机。录制前请确认已获得对话参与者同意。浏览器支持离线识别时可实时转写；已有音频支持回放和手动转写，不调用外部转写或
+        {isApiMode() ? '音频与转写保存在当前账户的私有存储中。' : '音频与转写仅保存在本机。'}
+        录制前请确认已获得对话参与者同意。浏览器支持离线识别时可实时转写；已有音频支持回放和手动转写，不调用外部转写或
         AI 服务。规则报告只检测表达标记，不判断技术正确性。
       </DemoNotice>
       {(saved.error || rounds.error || error) && (
@@ -581,7 +596,7 @@ export function ReviewPage({ id, round = 'round-1' }: { id: string; round?: stri
                   {changed
                     ? '有尚未保存的修改'
                     : draft.savedAt
-                      ? `已保存在本机 · ${new Date(draft.savedAt).toLocaleString('zh-CN')}`
+                      ? `已保存 · ${new Date(draft.savedAt).toLocaleString('zh-CN')}`
                       : '编辑后请保存复盘'}
                 </p>
               </Panel>

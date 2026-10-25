@@ -58,6 +58,10 @@ const mockJobs: Job[] = jobs.map((j, index) => ({
   deadlinePrecision: j.deadline ? 'date' : 'unknown',
   sourceTimezone: 'Asia/Shanghai',
   publishedAt: new Date(new Date(DEMO_NOW).getTime() - index * 3600000).toISOString(),
+  publishedDate: new Date(new Date(DEMO_NOW).getTime() - index * 3600000)
+    .toISOString()
+    .slice(0, 10),
+  publishedPrecision: 'exact',
   verifiedAt: new Date(DEMO_NOW).toISOString(),
   status: 'open',
   source: {
@@ -138,6 +142,8 @@ export function mapJob(row: Record<string, unknown>): Job {
           'deadlinePrecision',
           'sourceTimezone',
           'publishedAt',
+          'publishedDate',
+          'publishedPrecision',
           'verifiedAt',
           'status',
           'descriptionMd',
@@ -145,10 +151,14 @@ export function mapJob(row: Record<string, unknown>): Job {
         ].includes(k),
       ),
     ),
+    publishedAt: mapped.publishedAt ?? null,
+    collectedAt: row.last_seen_at ? new Date(String(row.last_seen_at)).toISOString() : null,
+    publishedDate: mapped.publishedDate?.slice(0, 10) ?? null,
+    publishedPrecision: mapped.publishedPrecision ?? (mapped.publishedAt ? 'exact' : 'unknown'),
     company: mapCompany(row.company as Record<string, unknown>),
     source: {
       id: mapped.sourceId,
-      name: String(row.source_name ?? '官方招聘'),
+      name: String(row.source_name ?? (mapped.verifiedAt ? '官方招聘' : '来源未核验')),
       url: mapped.canonicalUrl,
       verifiedAt: mapped.verifiedAt,
     },
@@ -253,7 +263,7 @@ export async function publicList(kind: PublicKind, params: URLSearchParams) {
         match(params, 'city', j.cities) &&
         match(params, 'companyId', j.company.id) &&
         match(params, 'role', j.role) &&
-        match(params, 'education', j.education) &&
+        match(params, 'education', j.education ?? '') &&
         match(params, 'recruitmentType', j.recruitmentType) &&
         match(params, 'graduationYear', j.graduationYears.map(String)) &&
         match(params, 'status', j.status)

@@ -226,7 +226,7 @@ test('timeline rounds and editable review, manual score and imported audio survi
   await page
     .getByLabel('导入面试音频', { exact: true })
     .setInputFiles({ name: '本轮录音.wav', mimeType: 'audio/wav', buffer: wav });
-  await expect(page.getByText('本轮录音.wav · 已保存在本机', { exact: true })).toBeVisible();
+  await expect(page.getByText('本轮录音.wav · 已保存', { exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByRole('textbox', { name: '面试转写文字' })).toHaveValue(transcript);
   await expect(page.getByRole('textbox', { name: '我的复盘笔记' })).toHaveValue('下次补充失败边界');

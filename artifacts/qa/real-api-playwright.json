@@ -1,0 +1,333 @@
+{
+  "config": {
+    "argv": [
+      "/Users/wangcong/.nvm/versions/node/v24.21.0/bin/node",
+      "/Users/wangcong/Desktop/校招雷达/node_modules/@playwright/test/cli.js",
+      "test",
+      "--config",
+      "playwright.real.config.ts"
+    ],
+    "configFile": "/Users/wangcong/Desktop/校招雷达/apps/web/playwright.real.config.ts",
+    "rootDir": "/Users/wangcong/Desktop/校招雷达/apps/web/e2e",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/Users/wangcong/Desktop/校招雷达/apps/web/test-results-real",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "",
+        "name": "",
+        "testDir": "/Users/wangcong/Desktop/校招雷达/apps/web/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "real-data.spec.ts"
+        ],
+        "timeout": 120000
+      }
+    ],
+    "filteredProjects": [
+      {
+        "grep": {},
+        "grepInvert": null,
+        "outputDir": "/Users/wangcong/Desktop/校招雷达/apps/web/test-results-real",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "name": "",
+        "testDir": "/Users/wangcong/Desktop/校招雷达/apps/web/e2e",
+        "snapshotDir": "/Users/wangcong/Desktop/校招雷达/apps/web/e2e",
+        "testIgnore": [],
+        "testMatch": "real-data.spec.ts",
+        "timeout": 120000,
+        "use": {
+          "baseURL": "http://127.0.0.1:3300",
+          "viewport": {
+            "width": 1440,
+            "height": 1000
+          },
+          "headless": true,
+          "launchOptions": {
+            "executablePath": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+          },
+          "trace": "retain-on-failure"
+        },
+        "dependencies": [],
+        "ignoreSnapshots": false,
+        "__projectId": ""
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "../../artifacts/qa/real-api-playwright.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "default",
+    "updateSourceMethod": "patch",
+    "version": "1.64.1",
+    "workers": 1,
+    "webServer": {
+      "command": "npm exec next dev -- --hostname 127.0.0.1 --port 3300",
+      "url": "http://127.0.0.1:3300/login",
+      "reuseExistingServer": false,
+      "timeout": 120000,
+      "env": {
+        "NEXT_PUBLIC_DATA_MODE": "api",
+        "NEXT_TEST_DIST_DIR": ".next-real-test"
+      }
+    }
+  },
+  "suites": [
+    {
+      "title": "real-data.spec.ts",
+      "file": "real-data.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "official catalog, drawer, favorite, pipeline and account isolation persist in PostgreSQL",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 120000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 13759,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-24T12:42:03.992Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "0fac0b19e286965950b6-b93e07a54ed10cfe6f0b",
+          "file": "real-data.spec.ts",
+          "line": 44,
+          "column": 5
+        },
+        {
+          "title": "planner, calendar, offer weights and subscription writes survive cleared browser storage",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 120000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 8021,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-24T12:42:18.001Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "0fac0b19e286965950b6-6eeb371a1a476664988a",
+          "file": "real-data.spec.ts",
+          "line": 101,
+          "column": 5
+        },
+        {
+          "title": "private resume bytes, original experience, discussion and native backup are real server records",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 120000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 10457,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-24T12:42:26.027Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "0fac0b19e286965950b6-827114d2379de614abab",
+          "file": "real-data.spec.ts",
+          "line": 147,
+          "column": 5
+        },
+        {
+          "title": "all independent API routes render without demo records or runtime exceptions",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 120000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 13242,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-24T12:42:36.493Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "0fac0b19e286965950b6-3cdc0eba4185c90acdde",
+          "file": "real-data.spec.ts",
+          "line": 212,
+          "column": 5
+        },
+        {
+          "title": "a conflicting save preserves the editor and can recover without a full reload",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 120000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 3163,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-24T12:42:49.744Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "0fac0b19e286965950b6-4ec9610efbfa5e0abb4a",
+          "file": "real-data.spec.ts",
+          "line": 250,
+          "column": 5
+        },
+        {
+          "title": "manual source-linked job entry saves actual fields and leaves unknown facts empty",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 120000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 3514,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-24T12:42:52.918Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "0fac0b19e286965950b6-82e11912d9279bda760c",
+          "file": "real-data.spec.ts",
+          "line": 277,
+          "column": 5
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-10-24T12:42:01.372Z",
+    "duration": 55246.571,
+    "expected": 6,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

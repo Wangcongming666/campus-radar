@@ -156,7 +156,9 @@ export function DemoNotice({ children }: { children?: ReactNode }) {
     <div className="demo-notice">
       <Signal className="size-3.5 shrink-0" />
       <span>
-        {children ?? '当前为产品预览，岗位、匹配分及行业数据均为演示数据；操作仅保存在本机。'}
+        {process.env.NEXT_PUBLIC_DATA_MODE === 'api'
+          ? 'API 模式：账户操作保存到数据库；招聘信息请核对官方来源和采集时间。匹配与报告当前采用规则分析。'
+          : children ?? '当前为产品预览，岗位、匹配分及行业数据均为演示数据；操作仅保存在本机。'}
       </span>
     </div>
   );

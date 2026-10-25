@@ -23,7 +23,7 @@ export default defineConfig({
   webServer: {
     command: 'npm exec next dev -- --hostname 127.0.0.1 --port 3100',
     url: 'http://127.0.0.1:3100/login',
-    env: { NEXT_PUBLIC_DATA_MODE: 'api' },
+    env: { NEXT_PUBLIC_DATA_MODE: 'api', NEXT_TEST_DIST_DIR: '.next-account-test' },
     reuseExistingServer: false,
     timeout: 120000,
   },

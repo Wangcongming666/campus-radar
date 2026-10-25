@@ -78,6 +78,8 @@ test('salary form contributes actual sample, quantiles and comparison', async ({
   await page.goto('/salary');
   await page.getByRole('button', { name: '添加薪资爆料' }).click();
   const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('岗位方向', { exact: true }).fill('前端开发');
+  await dialog.getByLabel('城市', { exact: true }).fill('深圳');
   await dialog.getByLabel('月薪（K）').fill('40');
   await dialog.getByLabel('薪资月数').fill('16');
   await dialog.getByLabel('保证奖金（K）').fill('10');

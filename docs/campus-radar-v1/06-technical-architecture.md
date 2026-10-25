@@ -1,6 +1,10 @@
 # 06 技术架构轻量初稿
 
-版本：0.1。所有实现与部署都在用户确认方案之后；目前仅文档。
+架构基线；实际实现与验证状态见 [08 交付状态](08-delivery-status.md)。
+
+2026-10-24 范围调整：用户取消外部AI能力。产品采用规则匹配、文本提取和题库练习，不接LLM、embedding或云端转写。已安装pgvector与历史预留字段保留，不生成向量，不增加模型服务或部署费用。
+
+数据库架构已于 2026-10-24 定稿：本地沿用现有 PostgreSQL 16 服务与数据卷，同一个 `campus_radar` 库承载业务、pgvector 和任务队列；阿里云部署沿用相同架构。最终口径及现有实例核实结果以 [04 数据模型](04-data-model.md#最终数据库口径) 为准，不另起独立向量数据库或第二套本地业务库。
 
 ## 架构图与数据流
 
@@ -19,7 +23,6 @@ flowchart TB
   Executor[Python 独立任务执行进程]
   FastAPI[FastAPI 内部控制 / 健康 / 任务查询]
   Scrapy[Scrapy 来源适配器]
-  AI[LLM / Embedding / 转写服务]
   Sources[准入公开来源 / 官方API]
   Browser --> UI --> State
   State --> API --> Service
@@ -31,10 +34,9 @@ flowchart TB
   Executor -->|原子领取租约| PG
   FastAPI --> PG
   Executor --> Scrapy --> Sources
-  Executor --> AI
   Executor --> Storage
   Executor -->|签名爬虫批次| API
-  Executor -->|AI结果事务提交| PG
+  Executor -->|任务结果事务提交| PG
 ```
 
 推荐模块化单体。MVP 无 Redis/Celery 依赖；需要扩容再替换 TaskRepository 实现，不改变浏览器任务协议。FastAPI 只做 worker 的内网控制面；持久化任务由独立 executor 处理，不依赖 FastAPI 进程内 BackgroundTasks 保证任务可靠性。[FastAPI 后台任务说明](https://fastapi.tiangolo.com/tutorial/background-tasks/)。
@@ -45,14 +47,14 @@ flowchart TB
 - React Query：请求、缓存、mutation、分页、乐观更新；queryKey 带筛选/用户作用域，登出清空私有缓存。
 - Zustand：侧栏、命令面板、主题、临时编辑缓冲；不重复保存 API 列表。URL 保存筛选、排序、tab、预览深链接。
 - Repository：隔离 PG、Auth、Storage；浏览器 HttpAdapter 与 MockAdapter 遵循 OpenAPI DTO，服务端使用相同 domain/service。
-- worker：爬虫、向量、AI、转写、推送、导出/清除；以资源 ID 和输入 hash 处理任务，完成前校验资源仍存在且版本一致。
+- worker：爬虫，以及后续推送、导出/清除；以资源 ID 和输入 hash 处理任务，完成前校验资源仍存在且版本一致。
 - DB：实际采用 postgres.js 参数化 SQL 与显式 SQL migrations；pgvector/约束/索引同样由迁移管理；公开/私有分权。Python 用 psycopg 访问受限任务/结果表，不维护第二份 ORM schema。
 
 ### 持久化队列
 
 Next.js 在业务事务内插入 Task，成功即202。Executor 用 `FOR UPDATE SKIP LOCKED` 领取 queued 且 available_at 到期的任务，提交事务后执行；租约默认60秒、每20秒心跳，长任务可续约。每次领取生成新的 lease_token，结果落库前必须比对；过期任务经回收器重新 queued。[PostgreSQL 队列式锁定说明](https://www.postgresql.org/docs/current/sql-select.html)。
 
-系统是至少一次执行，靠 dedup_key、输入 hash、幂等批次及事务实现业务结果不重复；不是宣称模型只会调用一次。网络中断后未知状态的供应商请求可能重复计费，记录 provider_request_id，支持供应商幂等键时使用。最大重试3次，指数退避+抖动；永久权限/无效输入失败不重试；预算耗尽直接失败。用户删除资源会取消其未完成任务，旧租约不能写回。
+系统是至少一次执行，靠 dedup_key、输入 hash、幂等批次及事务实现业务结果不重复。最大重试3次，指数退避+抖动；永久权限/无效输入失败不重试。用户删除资源会取消其未完成任务，旧租约不能写回。
 
 APScheduler 只由一个进程调度，PG advisory lock 防重复 leader；有持久化下一次运行时间与去重键，重启 coalesce 错过的运行，不集中补发大量请求。FastAPI 以独立进程提供 /health/live、/health/ready、受服务鉴权的 /internal/tasks/{id} 和取消接口；不直接暴露公网，不在 MVP 浏览器 OpenAPI 中列入内部运维接口。
 
@@ -103,8 +105,8 @@ campus-radar/
 │   ├── scheduler/
 │   ├── executor/                           # 租约/重试/幂等
 │   ├── crawlers/                           # Scrapy spiders/pipelines/middlewares
-│   ├── tasks/                              # AI/embedding/export/delete
-│   ├── ai/                                 # provider接口、prompts、rubrics
+│   ├── tasks/                              # 采集/export/delete
+│   ├── ai/                                 # 历史预留provider代码，当前范围不启用
 │   ├── schemas/                            # OpenAPI派生/校验Python模型
 │   └── tests/
 ├── database/migrations/                    # 唯一 schema 迁移来源
@@ -134,17 +136,14 @@ Scrapy 启用 ROBOTSTXT_OBEY 与 AutoThrottle；每域初始并发1、请求间�
 
 流水线：公开源→解析→结构校验→来源内去重→公司实体匹配→变化 hash→签名批次→事务 upsert。MVP 为单公司官方招聘源，准入时同时建立 Company 并在 Source 配置中绑定 companyId；未知公司不让爬虫任意创建实体，进入人工归一化队列后再入库。跨来源相似岗位先打疑似重复标记，避免误合并不同批次。页面显示 publishedAt/verifiedAt/来源；超过24小时未验证标“可能有更新”，不能笼统称为实时。
 
-## AI 调用与成本（V2/V3）
+## 规则工具与练习
 
-- Provider 接口隔离文本生成/embedding/转写，不绑定某个厂商；启用前确定模型、数据区域、保存政策与用户授权。
-- 简历解析、面经总结、评分、改写都返回经 JSON Schema 校验的结构；格式重试最多1次且计入预算。来源文档视为数据，忽略其中的工具/系统指令；worker 默认无外部工具调用权限。
-- 生成按 contentHash+model+promptVersion+rubricVersion 缓存；私有简历只在本人范围命中。公开内容可共享摘要缓存，用户资料不能跨用户缓存。
-- 匹配先硬过滤，再 embedding，最后可解释评分；LLM 只用于需要解释的少量候选，不每次滚动列表都调用模型。
-- 报告显示生成时间、证据和适用范围；录用概率、虚构面试轮次/薪资不生成。
-- 初始预算策略：每用户每日解析3次、总结10次（优先公共缓存）、诊断2次、模拟面试2场；每场最多10题。文本任务输入最多12k token、输出最多2k；模拟整场总输入最多40k、输出最多6k，超限提示缩短材料，不静默截断关键内容。
-- 文本超时90秒、解析120秒、整场模拟评分180秒，重试仍受总预算和任务超时限制；无凭据时仅在明确演示模式返回演示报告，生产返回服务未配置。
-- 估算公式：文本成本 = 输入token/1e6×输入单价 + 输出token/1e6×输出单价；embedding = token/1e6×单价；转写 = 分钟×单价。月预算含重试、缓存命中率与峰值，价格来自启用时的供应商价表，不在此虚构当前费用。
-- 初始平台 AI 上限设为每天人民币50元等值的计费预算，汇率/价格表带生效日期；入队预留最大预算，完成按实际用量结算，超限停止新增付费任务。预算由配置调整，不自动升级付费方案。
+- 匹配使用明确的岗位条件、用户偏好和关键词覆盖，未知信息不计分，并展示依据。
+- 简历通过浏览器提取PDF/TXT/MD文字，规则检查结构、关键词与表达，不生成虚构经历。
+- 面经重点由正文句子提取；复盘与模拟反馈使用关键词和表达标记，并提供参考要点与自评。
+- 模拟面试由现有题库驱动，保留配置、计时、暂停恢复、逐题回答和历史；不生成面试官对话，也不声称能判断技术正确性。
+- 录音支持导入、回放和手动转写。浏览器语音能力仅在用户主动开启且可用时使用，不新增云端转写。
+- 无模型API调用、模型预算或embedding回填要求；已有预留适配器不启用。
 
 ## 鉴权、数据访问与上传
 
@@ -152,7 +151,7 @@ Supabase Auth 负责验证邮箱与密码；站点 /auth/callback 校验 state/�
 
 应用运行角色非 table owner，私有表启用 RLS；通过事务局部用户上下文执行，连接池归还前无会话残留。身份必须来自服务端会话，不能接受用户自报 UUID。worker 角色仅能领取任务、读取任务所需授权对象和写结果，不能任意读取用户表。RLS 是额外防线，不能用 service-role 全权限连接宣称已隔离。[PostgreSQL RLS](https://www.postgresql.org/docs/current/ddl-rowsecurity.html)。
 
-V2 文件上传：申请限时签名→浏览器直传私有桶→服务端确认 hash/大小/MIME/魔数→扫描→任务入队；PDF/DOCX 上限10MB，解析在无宏/无任意网络的隔离环境。删除文件或撤销同意后取消相关任务。API 请求不携带完整文件，不等待 AI。
+当前文件上传由私有文件API验证归属、hash、大小、MIME与文件头，原件保存至持久私有目录；PDF/TXT/MD文字由浏览器提取。多实例部署需接入私有对象存储或共享持久卷，扫描与保留策略在生产上线前补齐。
 
 ## Mock 与真数据切换
 
@@ -172,9 +171,6 @@ UI 预览可用浏览器本地保存非敏感演示状态，提供“重置演�
 | STORAGE_BUCKET_PRIVATE | Web/worker | 私有文件与导出 |
 | WORKER_DATABASE_URL / SCHEDULER_DATABASE_URL | 对应进程 | 最小权限数据库角色 |
 | WORKER_HMAC_KEY / WORKER_HMAC_KEY_ID / WEB_INTERNAL_ORIGIN | Web/worker | 内部同步签名、轮换和目标站点 |
-| LLM_BASE_URL / LLM_API_KEY / LLM_MODEL | 仅worker | 模型调用 |
-| EMBEDDING_MODEL / EMBEDDING_DIMENSIONS | 仅worker | 初始维度1536，须与迁移一致 |
-| TRANSCRIPTION_API_KEY / AI_PRICE_TABLE / AI_DAILY_BUDGET_CNY | 仅worker | 语音与预算（启用时配置） |
 | CRAWL_ALLOWED_SOURCES / PROXY_POOL_URL | 仅worker | 允许来源/经授权代理，默认空 |
 | LOG_LEVEL / OTEL_EXPORTER_OTLP_ENDPOINT / SENTRY_DSN | 服务端 | 脱敏日志与告警 |
 
@@ -184,11 +180,11 @@ UI 预览可用浏览器本地保存非敏感演示状态，提供“重置演�
 
 - Vercel 部署 Next.js，Railway 部署 FastAPI/executor/scheduler 三进程，Supabase 提供 PG/Auth/Storage；地域尽量靠近并在启用前验证目标用户网络与数据区域要求，不能只按地图距离推断可用性。
 - PG 迁移使用直连、Web 使用池化连接；每次发布先检查迁移向后兼容，再部署 Web/worker。不可逆迁移先快照、验证恢复；不由预览环境自动修改生产库。
-- 指标：HTTP p95/错误率、DB慢查询、队列最老年龄/租约回收/失败率、来源成功率/最后成功时间/重复率、AI token/成本/超时、用户核心漏斗。日志用 requestId/taskId/sourceId 关联，不打印简历、录音、cookie 或完整模型提示。
-- 初始告警：API 5xx 连续5分钟>2%；队列最老任务>10分钟；来源连续失败3次或24小时未成功；AI预算达80%预警/100%停发；阈值上线后根据基线调整。
+- 指标：HTTP p95/错误率、DB慢查询、队列最老年龄/租约回收/失败率、来源成功率/最后成功时间/重复率、用户核心漏斗。日志用 requestId/taskId/sourceId 关联，不打印简历、录音或cookie。
+- 初始告警：API 5xx 连续5分钟>2%；队列最老任务>10分钟；来源连续失败3次或24小时未成功；阈值上线后根据基线调整。
 - 验收：TypeScript检查、lint、生产build；合同与越权集成测试；worker租约/幂等/失败恢复测试；Playwright 核心路径、键盘操作与移动端；真实浏览器检查主题/溢出/console/hydration；部署后 smoke 与备份恢复演练。
 - 当前文档只定义验收要求，没有声称 build、API、爬虫或性能已经通过。
 
 ## 参考边界
 
-本方案引用官方文档确认能力与约束，版本补丁在开始编码时检查兼容矩阵并固定 lockfile。候选招聘站尚未进行访问规则审查，真实 AI 模型及价格尚未采购；二者不阻塞 mock UI 开发，但必须在对应真实能力开通前落实。
+本方案引用官方文档确认能力与约束，实际版本由lockfile固定。公开来源须逐站审核；本机已接入的小米元数据及来源规则见12接入记录。外部AI已取消，不再安排模型采购或接入。

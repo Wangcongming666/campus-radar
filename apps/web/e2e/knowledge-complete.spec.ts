@@ -60,7 +60,7 @@ test('community posts, replies and reports are stored locally', async ({ page })
   await expect(page.getByRole('dialog')).toContainText('加上结果验证与反思');
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: '举报演示内容' }).first().click();
-  await page.getByRole('button', { name: '确认本机举报' }).click();
+  await page.getByRole('button', { name: '确认记录并隐藏' }).click();
   await page.getByRole('button', { name: '我的举报', exact: true }).click();
   await expect(page.locator('main')).toContainText('已在本机隐藏');
 });

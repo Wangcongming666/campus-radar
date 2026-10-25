@@ -61,7 +61,12 @@ export default function JobDetail({ id }: { id: string }) {
   const company = getCompany(job.companyId);
   const related = allExperiences.filter((e) => e.companyId === job.companyId);
   const matching = matchJob(job, profile);
-  const portal = officialCareers[job.companyId];
+  const cloud = process.env.NEXT_PUBLIC_DATA_MODE === 'api';
+  const portal = cloud
+    ? job.canonicalUrl
+      ? { url: job.canonicalUrl, label: job.sourceName ?? '岗位来源（未核验）' }
+      : undefined
+    : officialCareers[job.companyId];
   const radarData = matching.dimensions.map((d) => ({
     subject: d.value === null ? `${d.label}（未知）` : d.label,
     A: d.value ?? 0,
@@ -139,7 +144,7 @@ export default function JobDetail({ id }: { id: string }) {
               </span>
               <span className="info-row">
                 <GraduationCap className="size-3.5" />
-                {job.education}及以上
+                {job.education}{!['学历未注明', '不限'].includes(job.education) && '及以上'}
               </span>
               <span className="text-xs text-muted-foreground">
                 {job.requirements.join(' ').match(/20\d{2}\s*届/)?.[0] || '届别未明确'} · {job.type}
@@ -151,7 +156,7 @@ export default function JobDetail({ id }: { id: string }) {
                   {tag}
                 </SmallTag>
               ))}
-              <SmallTag>校园招聘</SmallTag>
+              <SmallTag>{job.type === '实习' ? '实习招聘' : '校园招聘'}</SmallTag>
             </div>
             <div className="mt-6 flex flex-wrap gap-3">
               <Button onClick={() => addApplication(job.id)}>
@@ -167,7 +172,7 @@ export default function JobDetail({ id }: { id: string }) {
               {portal && (
                 <Button variant="outline" asChild>
                   <a href={portal.url} target="_blank" rel="noopener noreferrer">
-                    前往官方招聘门户
+                    {cloud ? '打开原始岗位链接' : '前往官方招聘门户'}
                     <ExternalLink size={14} />
                   </a>
                 </Button>
@@ -176,8 +181,8 @@ export default function JobDetail({ id }: { id: string }) {
                 <Clock className="size-3.5" />
                 {job.deadline
                   ? deadlineDays(job.deadline)! < 0
-                    ? '样本岗位已截止'
-                    : `距样本截止 ${deadlineDays(job.deadline)} 天`
+                    ? (cloud ? '岗位已截止' : '样本岗位已截止')
+                    : `距${cloud ? '' : '样本'}截止 ${deadlineDays(job.deadline)} 天`
                   : '截止时间未明确'}
               </span>
             </div>
@@ -210,15 +215,17 @@ export default function JobDetail({ id }: { id: string }) {
                     <li key={v}>{highlight(v)}</li>
                   ))}
                 </ul>
-                <h2>加分项</h2>
+                {!cloud && <><h2>加分项</h2>
                 <ul>
                   <li>拥有独立完成的项目、开源贡献或实习经历。</li>
                   <li>对技术与产品充满好奇，能够主动沟通并推动问题解决。</li>
-                </ul>
+                </ul></>}
                 <div className="mt-8 rounded-xl bg-raised/60 p-4 text-xs text-muted-foreground flex gap-3 leading-7">
                   <ShieldCheck className="size-4 shrink-0 mt-1 text-status-offer" />
                   <div>
-                    本岗位为产品演示数据，非实时招聘信息。实际岗位、薪资和截止时间请以企业官方招聘网站为准。点击加入看板只创建本地记录，不会向企业提交简历。
+                    {cloud
+                      ? '收录内容反映采集或录入时的来源信息。请打开原始链接确认岗位、薪资和截止时间。加入看板会保存到你的账号，不会向企业提交简历。'
+                      : '本岗位为产品演示数据，非实时招聘信息。实际岗位、薪资和截止时间请以企业官方招聘网站为准。点击加入看板只创建本地记录，不会向企业提交简历。'}
                   </div>
                 </div>
                 {portal && (
@@ -232,13 +239,17 @@ export default function JobDetail({ id }: { id: string }) {
                       {portal.label} · {new URL(portal.url).hostname}
                     </a>
                     <p>
-                      仅提供企业公开招聘门户，不代表该样本岗位真实存在或仍在招聘。请自行查找并核验实际岗位；打开门户不会提交简历或改变本机投递阶段。
+                      {cloud
+                        ? '原始招聘来源链接。手动录入内容未经官方核验，请以来源页面为准。'
+                        : '仅提供企业公开招聘门户，不代表该样本岗位真实存在或仍在招聘。请自行查找并核验实际岗位；打开门户不会提交简历或改变本机投递阶段。'}
                     </p>
                   </div>
                 )}
                 <div className="flex justify-between items-center mt-6 text-[10px] text-subtle">
-                  <span>来源：本站虚构岗位样本</span>
-                  <span>演示时间：2026-10-23</span>
+                  <span>{cloud ? `发布日期：${job.posted}` : '来源：本站虚构岗位样本'}</span>
+                  <span>
+                    {cloud ? `来源：${job.sourceName ?? '未核验'}${job.collectedAt ? ` · 采集于 ${new Date(job.collectedAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}` : ''}` : '演示时间：2026-10-23'}
+                  </span>
                 </div>
               </div>
             ) : tab === '公司简介' ? (
@@ -378,7 +389,7 @@ export default function JobDetail({ id }: { id: string }) {
               </span>
               <span className="flex gap-2 items-center">
                 <BriefcaseBusiness className="size-3.5" />
-                {jobs.filter((j) => j.companyId === company.id).length} 个演示在招岗位
+                {jobs.filter((j) => j.companyId === company.id).length} 个岗位
               </span>
             </div>
             <SectionLink href={`/company/${company.id}`}>查看公司情报</SectionLink>

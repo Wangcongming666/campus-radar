@@ -2,7 +2,9 @@
 name: campus-radar
 services:
   postgres:
-    image: postgres:16.6-alpine
+    build:
+      context: ./postgres
+    image: campus-radar-postgres:16.6-pgvector-0.8.7
     environment:
       POSTGRES_DB: campus_radar
       POSTGRES_USER: postgres

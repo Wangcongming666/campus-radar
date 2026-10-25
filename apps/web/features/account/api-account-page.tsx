@@ -21,6 +21,7 @@ import { Input } from '@/components/ui/input';
 import { PageHeader, Panel, StatCard } from '@/components/shared';
 import type { User } from '@/lib/api/contracts';
 import { CampusApiError } from '@/lib/api/adapter';
+import { useRadarStore } from '@/lib/store';
 
 export function ApiAccountPage({ onboarding = false }: { onboarding?: boolean }) {
   return onboarding ? (
@@ -34,6 +35,8 @@ export function ApiAccountPage({ onboarding = false }: { onboarding?: boolean })
 
 function AccountContent({ onboarding }: { onboarding: boolean }) {
   const { user } = useCampus();
+  const applications = useRadarStore((state) => state.applications);
+  const favorites = useRadarStore((state) => state.favorites);
   if (!user) return null;
   return (
     <div className={onboarding ? 'max-w-4xl mx-auto px-5 py-12' : undefined}>
@@ -48,18 +51,17 @@ function AccountContent({ onboarding }: { onboarding: boolean }) {
       />
       {!onboarding && (
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-7">
-          <StatCard label="投递记录" value={user.overview.applications} icon={BriefcaseBusiness} />
-          <StatCard label="面试进程" value={user.overview.interviews} icon={Users} />
-          <StatCard label="收获 Offer" value={user.overview.offers} icon={Trophy} />
-          <StatCard label="云端收藏" value={user.overview.favorites} icon={Bookmark} />
+          <StatCard label="投递记录" value={applications.length} icon={BriefcaseBusiness} />
+          <StatCard label="面试进程" value={applications.filter((item) => ['INTERVIEW_1', 'INTERVIEW_2', 'HR'].includes(item.stage)).length} icon={Users} />
+          <StatCard label="收获 Offer" value={applications.filter((item) => item.stage === 'OFFER').length} icon={Trophy} />
+          <StatCard label="云端收藏" value={favorites.length} icon={Bookmark} />
         </div>
       )}
       <ProfileForm key={user.id} user={user} onboarding={onboarding} />
       <div className="flex items-start gap-2.5 text-xs text-muted-foreground leading-6 mt-6">
         <ShieldCheck className="size-4 text-primary shrink-0 mt-1" />
         <p>
-          这里显示账号资料与云端统计。简历上传、AI
-          解析和数据导出将在对应服务接入后开放；当前不会上传简历文件。
+          这里显示已保存的账号资料与统计。可前往简历版本库上传文件，在设置中导出账号备份；匹配目前采用可解释规则，未调用外部 AI。
         </p>
       </div>
     </div>

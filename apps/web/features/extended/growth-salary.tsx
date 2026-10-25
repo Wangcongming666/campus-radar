@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import Link from 'next/link';
 import { PageHeader, Panel, DemoNotice, SmallTag, StatCard } from '@/components/shared';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -44,15 +45,15 @@ const initialSamples: SalarySample[] = [
 }));
 const blank = (): SalarySample => ({
   id: '',
-  companyId: companies[0].id,
-  role: '前端开发',
-  city: '深圳',
+  companyId: companies[0]?.id ?? '',
+  role: '',
+  city: '',
   base: 0,
   months: 12,
   bonus: 0,
-  year: '2027',
+  year: String(new Date().getFullYear() + 1),
   level: '本科',
-  source: '本机自填 · 未核验',
+  source: '用户自填 · 未核验',
   note: '',
 });
 function BoxPlot({ values }: { values: number[] }) {
@@ -117,7 +118,7 @@ export function SalaryPage() {
   const [samples, setSamples] = useValidatedArray<SalarySample>(
     'salary-samples-v2',
     salarySampleSchema,
-    initialSamples,
+    process.env.NEXT_PUBLIC_DATA_MODE === 'api' ? [] : initialSamples,
   );
   const [role, setRole] = useState('全部方向');
   const [city, setCity] = useState('全部城市');
@@ -138,9 +139,10 @@ export function SalaryPage() {
   const annual = annualCash;
   const q = quantiles(filtered.map(annual));
   const comparison = samples.filter((s) => selected.includes(s.id));
-  function save() {
+  async function save() {
     if (
-      !draft?.role.trim() ||
+      !draft?.companyId ||
+      !draft.role.trim() ||
       !draft.city.trim() ||
       !/^20\d{2}$/.test(draft.year) ||
       !Number.isFinite(draft.base) ||
@@ -163,11 +165,11 @@ export function SalaryPage() {
       id: draft.id || crypto.randomUUID(),
     };
     if (
-      !setSamples((xs) =>
+      !(await setSamples((xs) =>
         xs.some((x) => x.id === item.id)
           ? xs.map((x) => (x.id === item.id ? item : x))
           : [...xs, item],
-      )
+      ))
     )
       return;
     setDraft(null);
@@ -189,8 +191,10 @@ export function SalaryPage() {
         }
       />
       <DemoNotice>
-        初始数据为 7 条虚构样本；新增爆料仅存本机，未公开发布、未核验。年薪 = 月薪 × 薪资月数 +
-        保证奖金；不含不确定绩效与股票。
+        {process.env.NEXT_PUBLIC_DATA_MODE === 'api'
+          ? '仅统计你录入并保存到账号的薪资记录；记录未核验，不代表行业行情。'
+          : '初始数据为 7 条虚构样本；新增爆料仅存本机，未公开发布、未核验。'}
+        年薪 = 月薪 × 薪资月数 + 保证奖金；不含不确定绩效与股票。
       </DemoNotice>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <Field label="岗位方向">
@@ -308,8 +312,8 @@ export function SalaryPage() {
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => {
-                        setSamples((xs) => xs.filter((x) => x.id !== s.id));
+                      onClick={async () => {
+                        if (!(await setSamples((xs) => xs.filter((x) => x.id !== s.id)))) return;
                         setSelected((xs) => xs.filter((x) => x !== s.id));
                       }}
                     >
@@ -355,13 +359,13 @@ export function SalaryPage() {
         open={!!draft}
         onClose={() => setDraft(null)}
         title={draft?.id ? '编辑薪资记录' : '添加薪资爆料'}
-        description="仅保存本地记录；请统一填写税前保证现金，不含不确定收益。"
+        description="请统一填写税前保证现金，不含不确定收益。"
       >
         <form
           className="grid gap-4"
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault();
-            save();
+            await save();
           }}
         >
           {draft && (
@@ -372,6 +376,7 @@ export function SalaryPage() {
                   value={draft.companyId}
                   onChange={(e) => setDraft({ ...draft, companyId: e.target.value })}
                 >
+                  <option value="">请选择已收录公司</option>
                   {companies.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
@@ -379,9 +384,19 @@ export function SalaryPage() {
                   ))}
                 </select>
               </Field>
+              {!companies.length && (
+                <p className="text-sm text-muted-foreground">
+                  岗位库尚无公司，请先
+                  <Link className="underline" href="/jobs">
+                    导入真实招聘信息
+                  </Link>
+                  后再关联薪资记录。
+                </p>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <Field label="岗位方向">
                   <Input
+                    aria-label="岗位方向"
                     value={draft.role}
                     onChange={(e) => setDraft({ ...draft, role: e.target.value })}
                     list="salary-roles"

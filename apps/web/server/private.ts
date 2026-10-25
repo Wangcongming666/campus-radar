@@ -64,7 +64,7 @@ const userPatch = z
   })
   .strict()
   .refine((v) => Object.keys(v).length > 0);
-async function withUser(
+export async function withUser(
   request: Request,
   write: boolean,
   run: (sql: Db, session: Session) => Promise<Response>,
@@ -112,7 +112,7 @@ async function application(
   history = true,
 ): Promise<Application> {
   const rows =
-    await sql`select * from applications where id=${applicationId}::uuid and user_id=${userId}::uuid`;
+    await sql`select a.*,(select client_key from resumes r where r.id=a.resume_id and r.user_id=a.user_id) resume_client_key from applications a where a.id=${applicationId}::uuid and a.user_id=${userId}::uuid and a.deleted_at is null`;
   const row = rows[0];
   if (!row) throw notFound();
   const app = camel<Application>(row);
@@ -128,6 +128,8 @@ async function application(
     sortKey: String(row.sort_key),
     version: app.version,
     notes: app.notes,
+    date: row.display_date || app.appliedAt?.slice(0, 10) || app.createdAt.slice(0, 10),
+    resumeId: row.resume_client_key ?? row.resume_id ?? null,
     appliedAt: app.appliedAt,
     closedAt: app.closedAt,
     closedReason: app.closedReason,
@@ -139,7 +141,7 @@ async function application(
 }
 async function locked(sql: Db, userId: string, applicationId: string, version: number) {
   const rows =
-    await sql`select a.*,j.company_id from applications a join jobs j on j.id=a.job_id where a.id=${applicationId}::uuid and a.user_id=${userId}::uuid for update of a`;
+    await sql`select a.*,j.company_id from applications a join jobs j on j.id=a.job_id where a.id=${applicationId}::uuid and a.user_id=${userId}::uuid and a.deleted_at is null for update of a`;
   if (!rows[0]) throw notFound();
   if (rows[0].version !== version) throw conflict();
   return rows[0];
@@ -195,12 +197,15 @@ export function applications(request: Request) {
         const jobs = await sql`select id from jobs where id=${input.jobId}::uuid`;
         if (!jobs[0]) throw notFound();
         const existing =
-          await sql`select id from applications where user_id=${session.userId}::uuid and job_id=${input.jobId}::uuid`;
-        if (existing[0])
+          await sql`select id,deleted_at from applications where user_id=${session.userId}::uuid and job_id=${input.jobId}::uuid`;
+        if (existing[0]) {
+          if (existing[0].deleted_at)
+            await sql`update applications set deleted_at=null,archived_at=null,version=version+1,updated_at=now() where id=${existing[0].id}::uuid and user_id=${session.userId}::uuid`;
           return {
             status: 200,
             body: { data: await application(sql, session.userId, existing[0].id) },
           };
+        }
         const created =
           await sql`insert into applications(user_id,job_id,sort_key) values(${session.userId}::uuid,${input.jobId}::uuid,(select coalesce(max(sort_key),0)+1024 from applications where user_id=${session.userId}::uuid and stage='PENDING' and archived_at is null)) returning id`;
         await sql`insert into application_stage_events(application_id,to_stage,new_sort_key,actor_id,version) select id,stage,sort_key,user_id,version from applications where id=${created[0].id}::uuid`;
@@ -219,7 +224,7 @@ export function applications(request: Request) {
     if (params.has('view') && !['board', 'list'].includes(params.get('view')!))
       throw new ApiError(422, 'VALIDATION_ERROR', '视图无效。');
     const rows =
-      await sql`select a.* from applications a join jobs j on j.id=a.job_id where a.user_id=${session.userId}::uuid and a.archived_at is null ${companyIds.length ? sql`and j.company_id in ${sql(companyIds)}` : sql``} ${wanted.length ? sql`and a.stage::text in ${sql(wanted)}` : sql``} order by a.stage,a.sort_key,a.id limit 501`;
+      await sql`select a.*,(select client_key from resumes r where r.id=a.resume_id and r.user_id=a.user_id) resume_client_key from applications a join jobs j on j.id=a.job_id where a.user_id=${session.userId}::uuid and a.deleted_at is null ${params.get('includeArchived') === 'true' ? sql`` : sql`and a.archived_at is null`} ${companyIds.length ? sql`and j.company_id in ${sql(companyIds)}` : sql``} ${wanted.length ? sql`and a.stage::text in ${sql(wanted)}` : sql``} order by a.stage,a.sort_key,a.id limit 501`;
     const jobMap = new Map(
       (
         await jobsByIds(
@@ -228,6 +233,9 @@ export function applications(request: Request) {
         )
       ).map((j) => [j.id, j]),
     );
+    const historyRows = rows.length
+      ? await sql`select e.* from application_stage_events e join applications a on a.id=e.application_id where a.user_id=${session.userId}::uuid and a.id in ${sql(rows.slice(0, 500).map((r) => r.id))} order by e.version`
+      : [];
     const items: ApplicationCard[] = rows.slice(0, 500).map((row) => {
       const app = camel<Application>(row);
       return {
@@ -237,6 +245,11 @@ export function applications(request: Request) {
         sortKey: String(row.sort_key),
         version: app.version,
         notes: app.notes,
+        date: row.display_date || app.appliedAt?.slice(0, 10) || app.createdAt.slice(0, 10),
+        resumeId: row.resume_client_key ?? row.resume_id ?? null,
+        stageHistory: historyRows
+          .filter((e) => e.application_id === row.id)
+          .map((e) => camel<StageEvent>(e)),
         appliedAt: app.appliedAt,
         closedAt: app.closedAt,
         closedReason: app.closedReason,
@@ -246,7 +259,7 @@ export function applications(request: Request) {
       };
     });
     const totals =
-      await sql`select a.stage,count(*)::int count from applications a join jobs j on j.id=a.job_id where a.user_id=${session.userId}::uuid and a.archived_at is null ${companyIds.length ? sql`and j.company_id in ${sql(companyIds)}` : sql``} ${wanted.length ? sql`and a.stage::text in ${sql(wanted)}` : sql``} group by a.stage`;
+      await sql`select a.stage,count(*)::int count from applications a join jobs j on j.id=a.job_id where a.user_id=${session.userId}::uuid and a.deleted_at is null ${params.get('includeArchived') === 'true' ? sql`` : sql`and a.archived_at is null`} ${companyIds.length ? sql`and j.company_id in ${sql(companyIds)}` : sql``} ${wanted.length ? sql`and a.stage::text in ${sql(wanted)}` : sql``} group by a.stage`;
     const count = (states: readonly string[]) =>
       totals.filter((r) => states.includes(r.stage)).reduce((sum, r) => sum + r.count, 0);
     return json({
@@ -265,14 +278,25 @@ export function applications(request: Request) {
   });
 }
 export function applicationDetail(request: Request, applicationId: string) {
-  return withUser(request, request.method === 'PATCH', async (sql, session) => {
+  return withUser(request, request.method !== 'GET', async (sql, session) => {
     parseId(applicationId);
+    if (request.method === 'DELETE') {
+      const input = await body(
+        request,
+        z.object({ version: z.number().int().positive() }).strict(),
+      );
+      await locked(sql, session.userId, applicationId, input.version);
+      await sql`update applications set deleted_at=now(),version=version+1,updated_at=now() where id=${applicationId}::uuid and user_id=${session.userId}::uuid`;
+      return new Response(null, { status: 204 });
+    }
     if (request.method === 'PATCH') {
       const input = await body(
         request,
         z
           .object({
             notes: z.string().max(10000).optional(),
+            date: z.iso.date().optional(),
+            resumeId: z.string().min(1).max(120).nullable().optional(),
             appliedAt: z.iso.datetime({ offset: true }).nullable().optional(),
             archived: z.boolean().optional(),
             version: z.number().int().min(1),
@@ -281,7 +305,14 @@ export function applicationDetail(request: Request, applicationId: string) {
           .refine((v) => Object.keys(v).length > 1),
       );
       await locked(sql, session.userId, applicationId, input.version);
-      await sql`update applications set notes=${input.notes === undefined ? sql`notes` : input.notes},applied_at=${input.appliedAt === undefined ? sql`applied_at` : input.appliedAt},archived_at=${input.archived === undefined ? sql`archived_at` : input.archived ? sql`now()` : null},version=version+1,updated_at=now() where id=${applicationId}::uuid and user_id=${session.userId}::uuid`;
+      let resumeId = input.resumeId;
+      if (input.resumeId) {
+        const resumes =
+          await sql`select id from resumes where (id::text=${input.resumeId} or client_key=${input.resumeId}) and user_id=${session.userId}::uuid`;
+        if (!resumes[0]) throw new ApiError(422, 'VALIDATION_ERROR', '请选择当前账号的简历。');
+        resumeId = resumes[0].id;
+      }
+      await sql`update applications set display_date=${input.date === undefined ? sql`display_date` : input.date},resume_id=${resumeId === undefined ? sql`resume_id` : resumeId}::uuid,notes=${input.notes === undefined ? sql`notes` : input.notes},applied_at=${input.appliedAt === undefined ? sql`applied_at` : input.appliedAt},archived_at=${input.archived === undefined ? sql`archived_at` : input.archived ? sql`now()` : null},version=version+1,updated_at=now() where id=${applicationId}::uuid and user_id=${session.userId}::uuid`;
     }
     return json({ data: await application(sql, session.userId, applicationId) });
   });
@@ -307,7 +338,7 @@ export function moveApplication(request: Request, applicationId: string) {
       const current = await locked(sql, session.userId, applicationId, input.version);
       if (current.archived_at) throw new ApiError(409, 'VERSION_CONFLICT', '请先恢复归档投递。');
       const column =
-        await sql`select a.id,a.sort_key,j.company_id from applications a join jobs j on j.id=a.job_id where a.user_id=${session.userId}::uuid and a.stage=${input.stage}::application_stage and a.archived_at is null and a.id<>${applicationId}::uuid order by a.sort_key,a.id for update of a`;
+        await sql`select a.id,a.sort_key,j.company_id from applications a join jobs j on j.id=a.job_id where a.user_id=${session.userId}::uuid and a.stage=${input.stage}::application_stage and a.archived_at is null and a.deleted_at is null and a.id<>${applicationId}::uuid order by a.sort_key,a.id for update of a`;
       const scope =
         input.orderingScope === 'company'
           ? column.filter((r) => r.company_id === current.company_id)
@@ -322,7 +353,7 @@ export function moveApplication(request: Request, applicationId: string) {
         throw new ApiError(422, 'VALIDATION_ERROR', '排序邻居无效，请刷新后重试。');
       // Capture the original order by identity; numeric keys become stale after rebalance.
       const oldColumn =
-        await sql`select id from applications where user_id=${session.userId}::uuid and stage=${current.stage}::application_stage and archived_at is null order by sort_key,id`;
+        await sql`select id from applications where user_id=${session.userId}::uuid and stage=${current.stage}::application_stage and archived_at is null and deleted_at is null order by sort_key,id`;
       const oldIndex = oldColumn.findIndex((row) => row.id === applicationId);
       const oldNeighbors = {
         beforeId: oldColumn[oldIndex + 1]?.id ?? null,
@@ -382,7 +413,7 @@ export function undoApplication(request: Request, applicationId: string) {
       if (!neighbors)
         throw new ApiError(409, 'UNDO_CONFLICT', '旧操作没有完整排序快照，请刷新后重新调整。');
       const restoreColumn =
-        await sql`select id from applications where user_id=${session.userId}::uuid and stage=${last.from_stage}::application_stage and archived_at is null and id<>${applicationId}::uuid order by sort_key,id for update`;
+        await sql`select id from applications where user_id=${session.userId}::uuid and stage=${last.from_stage}::application_stage and archived_at is null and deleted_at is null and id<>${applicationId}::uuid order by sort_key,id for update`;
       const beforeIndex = neighbors.beforeId
         ? restoreColumn.findIndex((row) => row.id === neighbors.beforeId)
         : -1;
@@ -493,6 +524,18 @@ async function favoriteDto(sql: Db, row: Record<string, unknown>): Promise<Favor
         previewable: false,
       };
     }
+  } else if (targetType === 'question') {
+    const records =
+      await sql`select id,title,topic from questions where id=${targetId}::uuid and status='published'`;
+    if (records[0])
+      target = {
+        id: records[0].id,
+        type: 'question',
+        title: records[0].title,
+        subtitle: records[0].topic,
+        href: '/questions?preview=question:' + records[0].id,
+        previewable: true,
+      };
   } else {
     const records =
       await sql`select id,title,summary from experiences where id=${targetId}::uuid and status='published'`;
@@ -519,7 +562,7 @@ export function favorites(request: Request) {
   return withUser(request, false, async (sql, session) => {
     const params = new URL(request.url).searchParams;
     const wanted = values(params, 'type');
-    if (wanted.some((v) => !['job', 'experience', 'company'].includes(v)))
+    if (wanted.some((v) => !['job', 'experience', 'company', 'question'].includes(v)))
       throw new ApiError(422, 'VALIDATION_ERROR', '收藏类型无效。');
     const query = listQuery(params),
       cursor = decodeCursor(query.cursor, query.filter);
@@ -530,7 +573,7 @@ export function favorites(request: Request) {
     )
       throw new ApiError(422, 'INVALID_CURSOR', '分页位置无效。');
     const rows =
-      await sql`select * from favorites where user_id=${session.userId}::uuid ${wanted.length ? sql`and target_type in ${sql(wanted)}` : sql``} ${cursor ? sql`and (created_at,id)<(${cursor.sort}::timestamptz,${cursor.id}::uuid)` : sql``} order by created_at desc,id desc limit ${query.limit + 1}`;
+      await sql`select *,to_char(created_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') created_sort_key from favorites where user_id=${session.userId}::uuid ${wanted.length ? sql`and target_type in ${sql(wanted)}` : sql``} ${cursor ? sql`and (created_at,id)<(${cursor.sort}::text::timestamptz,${cursor.id}::uuid)` : sql``} order by created_at desc,id desc limit ${query.limit + 1}`;
     const hasMore = rows.length > query.limit;
     const records = rows.slice(0, query.limit),
       last = records.at(-1);
@@ -551,7 +594,7 @@ export function favorites(request: Request) {
                   v: 1,
                   filter: query.filter,
                   id: last.id,
-                  sort: new Date(last.created_at).toISOString(),
+                  sort: last.created_sort_key,
                 }),
               ).toString('base64url')
             : null,
@@ -563,16 +606,23 @@ export function favorites(request: Request) {
 export function favoriteMutation(request: Request, type: string, targetId: string) {
   return withUser(request, true, async (sql, session) => {
     parseId(targetId);
-    if (!['job', 'experience', 'company'].includes(type))
+    if (!['job', 'experience', 'company', 'question'].includes(type))
       throw new ApiError(422, 'VALIDATION_ERROR', '收藏类型无效。');
     const column = type + '_id';
     if (request.method === 'DELETE') {
       await sql`delete from favorites where user_id=${session.userId}::uuid and target_type=${type} and ${sql(column)}=${targetId}::uuid`;
       return new Response(null, { status: 204 });
     }
-    const table = type === 'job' ? 'jobs' : type === 'company' ? 'companies' : 'experiences';
+    const table =
+      type === 'job'
+        ? 'jobs'
+        : type === 'company'
+          ? 'companies'
+          : type === 'question'
+            ? 'questions'
+            : 'experiences';
     const exists =
-      await sql`select id from ${sql(table)} where id=${targetId}::uuid ${type === 'experience' ? sql`and status='published'` : sql``}`;
+      await sql`select id from ${sql(table)} where id=${targetId}::uuid ${type === 'experience' || type === 'question' ? sql`and status='published'` : sql``}`;
     if (!exists[0]) throw notFound();
     const rows =
       await sql`insert into favorites(user_id,target_type,${sql(column)}) values(${session.userId}::uuid,${type},${targetId}::uuid) on conflict do nothing returning *`;

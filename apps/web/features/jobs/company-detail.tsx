@@ -110,7 +110,7 @@ export default function CompanyDetail({ id }: { id: string }) {
   );
   const ratings = notes.filter((n) => n.category === '团队评价' && !n.hidden);
   const ownApplications = applications.filter((a) => companyJobs.some((j) => j.id === a.jobId));
-  function saveNote() {
+  async function saveNote() {
     if (
       !draft?.title.trim() ||
       draft.body.trim().length < 5 ||
@@ -129,27 +129,27 @@ export default function CompanyDetail({ id }: { id: string }) {
       body: draft.body.trim(),
     };
     if (
-      !setNotes((xs) =>
+      !(await setNotes((xs) =>
         xs.some((x) => x.id === item.id)
           ? xs.map((x) => (x.id === item.id ? item : x))
           : [...xs, item],
-      )
+      ))
     )
       return;
     setDraft(null);
   }
-  function saveEvent() {
+  async function saveEvent() {
     if (!eventDraft?.title.trim() || !eventDraft.date || !eventDraft.role.trim()) {
       setError('请填写时间、事件标题和对应岗位。');
       return;
     }
     const item = { ...eventDraft, id: eventDraft.id || crypto.randomUUID() };
     if (
-      !setTimeline((xs) =>
+      !(await setTimeline((xs) =>
         xs.some((x) => x.id === item.id)
           ? xs.map((x) => (x.id === item.id ? item : x))
           : [...xs, item],
-      )
+      ))
     )
       return;
     setEventDraft(null);
@@ -190,13 +190,15 @@ export default function CompanyDetail({ id }: { id: string }) {
         </div>
       </div>
       <DemoNotice>
-        公司与招聘信息来自本地演示库；评价、风格、避坑与开奖记录由你自行保存，仅本机可见，不代表已核验的员工意见或官方进度。
+        {process.env.NEXT_PUBLIC_DATA_MODE === 'api'
+          ? '公司与招聘信息来自云端目录。评价、观察与开奖记录保存到你的私人工作区，不代表已核验的员工意见或官方进度。'
+          : '公司与招聘信息来自本地演示库；评价、风格、避坑与开奖记录由你自行保存，仅本机可见，不代表已核验的员工意见或官方进度。'}
       </DemoNotice>
       <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-        <StatCard label="演示在招岗位" value={companyJobs.length} />
-        <StatCard label="本机投递记录" value={ownApplications.length} />
+        <StatCard label="目录岗位" value={companyJobs.length} />
+        <StatCard label="我的投递记录" value={ownApplications.length} />
         <StatCard
-          label="本机团队评价"
+          label="我的团队评价"
           value={
             ratings.length
               ? `${(ratings.reduce((n, r) => n + r.rating, 0) / ratings.length).toFixed(1)} / 5`
@@ -267,7 +269,7 @@ export default function CompanyDetail({ id }: { id: string }) {
           {tab === '薪资参考' && (
             <Panel
               title="岗位薪资口径"
-              description="以下为岗位库演示区间，不代表已发放 Offer 或真实行情。"
+              description="以下为岗位目录中的薪资口径，请以原始招聘来源为准。"
             >
               {companyJobs.map((j) => (
                 <Row key={j.id}>
@@ -281,7 +283,7 @@ export default function CompanyDetail({ id }: { id: string }) {
                 </Row>
               ))}
               {!companyJobs.length && (
-                <p className="py-4 text-sm text-muted-foreground">本地岗位库暂无薪资信息。</p>
+                <p className="py-4 text-sm text-muted-foreground">岗位目录暂无薪资信息。</p>
               )}
               <Button asChild variant="outline" className="mt-4">
                 <Link href="/salary">
@@ -302,7 +304,7 @@ export default function CompanyDetail({ id }: { id: string }) {
                     可以记录：轮次数量、项目追问深度、算法/基础/业务侧重、面试互动方式与反问环节。每个团队可能不同。
                   </p>
                   <Button asChild variant="outline" className="mt-4">
-                    <Link href={`/style/${company.slug}`}>查看演示风格与准备清单</Link>
+                    <Link href={`/style/${company.slug}`}>查看风格与准备清单</Link>
                   </Button>
                 </Panel>
               )}
@@ -556,7 +558,7 @@ export default function CompanyDetail({ id }: { id: string }) {
         open={!!draft}
         onClose={() => setDraft(null)}
         title={draft?.id ? '编辑公司记录' : `新增${category}`}
-        description="个人笔记仅存本机；请勿填入他人隐私。"
+        description="个人笔记保存在你的工作区。"
       >
         <form
           className="grid gap-4"

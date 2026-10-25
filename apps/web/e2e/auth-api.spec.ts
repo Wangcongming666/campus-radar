@@ -95,6 +95,10 @@ async function identityService(
       if (request.method() === 'PATCH') user = { ...user, ...request.postDataJSON() };
       return respond(200, { data: user }, true);
     }
+    if (signedIn && path === '/api/v1/workspace') return respond(200, { data: { records: {} } });
+    if (path === '/api/v1/catalog') return respond(200, { data: { companies: [], jobs: [], experiences: [], questions: [], chapters: [] } });
+    if (signedIn && path === '/api/v1/applications') return respond(200, { data: { items: [], stats: { total: 0, applied: 0, interviewing: 0, offers: 0 }, columns: [], truncated: false } });
+    if (signedIn && path === '/api/v1/favorites') return respond(200, { data: [], page: { hasMore: false, nextCursor: null }, meta: {} });
     return respond(503, {
       error: { code: 'SERVICE_UNAVAILABLE', message: '此接口未配置。', requestId: 'request-other' },
     });
@@ -159,14 +163,14 @@ test('API errors stay visible and never fall back to a demo identity', async ({ 
   await expect(page.getByText('林同学', { exact: true })).toHaveCount(0);
 });
 
-test('API mode keeps unconnected product modules separate from local demo content', async ({
+test('API mode renders the connected empty pipeline without local demo content', async ({
   page,
 }) => {
   await identityService(page, { signedIn: true });
   await page.goto('/pipeline');
-  await expect(page.getByRole('heading', { name: '投递看板正在接入云端' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '投递看板', exact: true })).toBeVisible();
   await expect(page.getByText('游戏客户端开发工程师', { exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '全局搜索', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '全局搜索', exact: true })).toBeVisible();
 });
 
 test('expired API session returns to login and hides the previous profile', async ({ page }) => {

@@ -35,6 +35,7 @@ import { LocalDiscussion } from '@/features/knowledge/local-discussion';
 import type { PracticeCollection } from './knowledge';
 import { RadarCompanyRanking } from './growth-radar-ranking';
 import { FilterButtons, Modal, Field, Pick, useLocal } from './common';
+import { useCampus } from '@/components/campus-provider';
 type Post = {
   id: number;
   name: string;
@@ -89,7 +90,11 @@ const initialPosts: Post[] = [
   },
 ];
 export function CommunityPage() {
-  const [posts, savePosts, error] = useKnowledgeLocal<Post[]>('posts', initialPosts);
+  const { mode, user } = useCampus();
+  const [posts, savePosts, error] = useKnowledgeLocal<Post[]>(
+    'posts',
+    mode === 'api' ? [] : initialPosts,
+  );
   const [reports, saveReports, reportError] = useKnowledgeLocal<
     Record<string, { reason: string; date: string }>
   >('community-reports', {});
@@ -108,7 +113,9 @@ export function CommunityPage() {
   const [validation, setValidation] = useState('');
   const [status, setStatus] = useState('');
   const [deleting, setDeleting] = useState<Post | null>(null);
-  const name = useRadarStore((s) => s.userName);
+  const [saving, setSaving] = useState(false);
+  const localName = useRadarStore((s) => s.userName);
+  const name = mode === 'api' ? user?.displayName || '同学' : localName;
   const visible = posts.filter(
     (p) =>
       (tab === '我的举报'
@@ -124,11 +131,13 @@ export function CommunityPage() {
     setValidation('');
     setStatus('');
   }
-  function add() {
+  async function add() {
+    if (saving) return;
+    setSaving(true);
     try {
       const text = validateText(body, 1, 1000);
       if (
-        savePosts((v) => [
+        await savePosts((v) => [
           {
             id: Date.now(),
             name: `${name} · 我`,
@@ -143,14 +152,16 @@ export function CommunityPage() {
           ...v,
         ])
       ) {
-        saveDraft({ body: '', tag: '学习记录' });
+        await saveDraft({ body: '', tag: '学习记录' });
         setBody('');
         setPublish(false);
         setTab('全部动态');
-        setStatus('动态已保存到本机社区');
+        setStatus(mode === 'api' ? '动态已保存到你的账号' : '动态已保存到本机社区');
       }
     } catch (e) {
       setValidation((e as Error).message);
+    } finally {
+      setSaving(false);
     }
   }
   return (
@@ -161,13 +172,17 @@ export function CommunityPage() {
         action={
           <Button disabled={!ready} onClick={open}>
             <Plus size={14} />
-            发布演示动态
+            {mode === 'api' ? '记录动态' : '发布演示动态'}
           </Button>
         }
       />
-      <DemoNotice>
-        所有用户为虚构样本。发布、讨论、点赞、举报和组队仅保存于本机，不会向他人发送消息。
-      </DemoNotice>
+      {mode === 'mock' ? (
+        <DemoNotice>
+          所有用户为虚构样本。发布、讨论、点赞、举报和组队仅保存于本机，不会向他人发送消息。
+        </DemoNotice>
+      ) : (
+        <p className="text-sm text-subtle">当前显示你的账号记录。多人信息流与人工审核尚未开放。</p>
+      )}
       <div className="grid gap-6 xl:grid-cols-[1fr_300px]">
         <div className="space-y-5">
           <FilterButtons
@@ -206,7 +221,7 @@ export function CommunityPage() {
                 <div className="flex-1">
                   <h2 className="text-sm font-medium">{p.name}</h2>
                   <p className="text-xs text-subtle mt-1">
-                    {p.time} · {p.mine ? '本机动态' : '演示样本'}
+                    {p.time} · {mode === 'api' ? '账号动态' : p.mine ? '本机动态' : '演示样本'}
                   </p>
                 </div>
                 <button onClick={() => setTab(p.tag)}>
@@ -216,7 +231,8 @@ export function CommunityPage() {
               <p className="my-5 whitespace-pre-wrap break-words text-sm leading-8">{p.body}</p>
               {reports[p.id] && (
                 <div className="mb-4 rounded bg-background p-3 text-xs">
-                  已在本机隐藏 · {reports[p.id].reason} · {reports[p.id].date}
+                  {mode === 'api' ? '已在账号内隐藏' : '已在本机隐藏'} · {reports[p.id].reason} ·{' '}
+                  {reports[p.id].date}
                   <Button
                     size="sm"
                     variant="ghost"
@@ -281,8 +297,8 @@ export function CommunityPage() {
           {!visible.length && (
             <EmptyState
               kind="community"
-              title={tab === '我的举报' ? '还没有本机举报记录' : '这个话题还很安静'}
-              description="调整搜索或写下自己的第一条本机动态。"
+              title={tab === '我的举报' ? '还没有举报记录' : '这个话题还很安静'}
+              description="调整搜索或写下自己的第一条动态。"
               action={<Button onClick={open}>写一条动态</Button>}
             />
           )}
@@ -306,7 +322,7 @@ export function CommunityPage() {
           </Panel>
           <Panel title="找一位同路人">
             <Users className="mb-4 text-primary" />
-            <p className="text-xs leading-7">共享题库、互相练习，在本机组织准备计划。</p>
+            <p className="text-xs leading-7">整理题库和练习安排，组织自己的准备计划。</p>
             <Button asChild className="mt-4">
               <Link href="/buddy">
                 发现求职搭子
@@ -316,7 +332,7 @@ export function CommunityPage() {
           </Panel>
           <Panel title="社区规则">
             <p className="text-xs leading-7 text-subtle">
-              尊重差异，不发布隐私、保密信息或未经验证的招聘承诺。举报将在本机隐藏内容并保留理由，人工审核与多人互动尚未连接。
+              尊重差异，不发布隐私、保密信息或未经验证的招聘承诺。隐藏记录仅在你的账号内生效，人工审核与多人互动尚未连接。
             </p>
           </Panel>
         </div>
@@ -325,7 +341,11 @@ export function CommunityPage() {
         open={publish}
         onClose={() => setPublish(false)}
         title="记录今天的一小步"
-        description="保存后在本机动态列表可阅读；关闭前可保存草稿。"
+        description={
+          mode === 'api'
+            ? '保存后在你的账号动态列表可阅读；关闭前可保存草稿。'
+            : '保存后在本机动态列表可阅读；关闭前可保存草稿。'
+        }
       >
         <Field label="动态内容">
           <Textarea
@@ -350,22 +370,29 @@ export function CommunityPage() {
         {status && <p role="status">{status}</p>}
         <div className="flex gap-3">
           <Button
+            disabled={saving}
             variant="outline"
-            onClick={() => {
-              if (saveDraft({ body, tag })) setStatus('动态草稿已保存');
+            onClick={async () => {
+              if (await saveDraft({ body, tag })) setStatus('动态草稿已保存');
             }}
           >
             保存动态草稿
           </Button>
-          <Button onClick={add}>保存演示动态</Button>
+          <Button disabled={saving} onClick={add}>
+            {mode === 'api' ? '保存动态' : '保存演示动态'}
+          </Button>
         </div>
       </Modal>
-      <Modal open={current !== null} onClose={() => setCurrent(null)} title="讨论 · 本机演示">
+      <Modal
+        open={current !== null}
+        onClose={() => setCurrent(null)}
+        title={mode === 'api' ? '讨论记录' : '讨论 · 本机演示'}
+      >
         {current !== null && <LocalDiscussion id={`community-${current}`} />}
       </Modal>
-      <Modal open={!!reporting} onClose={() => setReporting(null)} title="记录本机举报">
+      <Modal open={!!reporting} onClose={() => setReporting(null)} title="记录举报原因">
         <p className="text-sm leading-7">
-          选择原因后，此动态会在本机列表隐藏，记录保留在“我的举报”。不会提交至外部审核。
+          选择原因后，此动态会在你的列表隐藏，记录保留在“我的举报”。不会提交至外部审核。
         </p>
         <Field label="举报原因">
           <Pick
@@ -377,27 +404,27 @@ export function CommunityPage() {
         </Field>
         {reportError && <p role="alert">{reportError}</p>}
         <Button
-          onClick={() => {
+          onClick={async () => {
             if (
               reporting &&
-              saveReports((v) => ({
+              (await saveReports((v) => ({
                 ...v,
                 [reporting.id]: { reason, date: new Date().toLocaleString('zh-CN') },
-              }))
+              })))
             ) {
               setReporting(null);
-              setStatus('本机举报已记录，动态已隐藏');
+              setStatus('举报原因已记录，动态已隐藏');
             }
           }}
         >
-          确认本机举报
+          确认记录并隐藏
         </Button>
       </Modal>
       <Modal open={!!deleting} onClose={() => setDeleting(null)} title="删除我的动态？">
-        <p className="text-sm">删除后将从本机社区列表移除。</p>
+        <p className="text-sm">删除后将从你的动态列表移除。</p>
         <Button
-          onClick={() => {
-            if (deleting && savePosts((v) => v.filter((p) => p.id !== deleting.id)))
+          onClick={async () => {
+            if (deleting && (await savePosts((v) => v.filter((p) => p.id !== deleting.id))))
               setDeleting(null);
           }}
         >
@@ -471,11 +498,15 @@ const sampleRooms: Room[] = [
   },
 ];
 export function BuddyPage() {
+  const { mode } = useCampus();
   const [role, setRole] = useState('全部方向');
   const [time, setTime] = useState('全部时间');
   const [query, setQuery] = useState('');
   const [requests, saveRequests, requestError] = useKnowledgeLocal<number[]>('buddy-requests', []);
-  const [rooms, saveRooms, error] = useKnowledgeLocal<Room[]>('community-rooms', sampleRooms);
+  const [rooms, saveRooms, error] = useKnowledgeLocal<Room[]>(
+    'community-rooms',
+    mode === 'api' ? [] : sampleRooms,
+  );
   const [learning, , learningError] = useKnowledgeLocal<Learning>('knowledge-learning', {
     mastery: {},
     wrong: [],
@@ -496,14 +527,14 @@ export function BuddyPage() {
   const [validation, setValidation] = useState('');
   const [status, setStatus] = useState('');
   const active = rooms.find((r) => r.id === current);
-  const visible = buddies.filter(
+  const visible = (mode === 'api' ? [] : buddies).filter(
     (b) =>
       (role === '全部方向' || b.role === role) &&
       (time === '全部时间' ||
         (time === '周末' ? b.time.includes('周末') : b.time.includes('工作日'))) &&
       `${b.name}${b.tags.join('')}${b.description}`.toLowerCase().includes(query.toLowerCase()),
   );
-  function create() {
+  async function create() {
     try {
       const roomTitle = validateText(title, 2, 60);
       const when = validateText(schedule, 2, 80);
@@ -523,7 +554,7 @@ export function BuddyPage() {
         questionIds: selected.filter((id) => questions.some((q) => q.id === id)),
         notes: [],
       };
-      if (saveRooms((v) => [room, ...v])) {
+      if (await saveRooms((v) => [room, ...v])) {
         setCreating(false);
         setCurrent(room.id);
         setTitle('');
@@ -535,10 +566,10 @@ export function BuddyPage() {
       setValidation((e as Error).message);
     }
   }
-  function enter(room: Room) {
+  async function enter(room: Room) {
     try {
       const next = joinRoom(room);
-      if (saveRooms((v) => v.map((r) => (r.id === room.id ? next : r)))) {
+      if (await saveRooms((v) => v.map((r) => (r.id === room.id ? next : r)))) {
         setCurrent(room.id);
         setStatus('');
         setNote('');
@@ -547,15 +578,15 @@ export function BuddyPage() {
       setValidation((e as Error).message);
     }
   }
-  function addCollection(room: Room) {
+  async function addCollection(room: Room) {
     if (
-      saveCollections((v) => [
+      await saveCollections((v) => [
         ...v.filter((c) => c.id !== room.id),
         {
           id: room.id,
           title: room.title,
           questionIds: room.questionIds,
-          source: '本机组队共享题单',
+          source: mode === 'api' ? '练习组题单' : '本机组队共享题单',
         },
       ])
     )
@@ -568,18 +599,25 @@ export function BuddyPage() {
         description="从共同方向与可练习时间，找到一起准备的节奏。"
         action={
           <Button
+            disabled={!questions.length}
             onClick={() => {
               setCreating(true);
               setValidation('');
             }}
           >
-            创建本机练习组
+            {mode === 'api' ? '创建个人练习组' : '创建本机练习组'}
           </Button>
         }
       />
-      <DemoNotice>
-        个人资料为虚构样本。申请、组队与留言是本机练习记录；房间进度显示你自己的题库自评，尚无真实多人同步。
-      </DemoNotice>
+      {mode === 'mock' ? (
+        <DemoNotice>
+          个人资料为虚构样本。申请、组队与留言是本机练习记录；房间进度显示你自己的题库自评，尚无真实多人同步。
+        </DemoNotice>
+      ) : (
+        <p className="text-sm text-subtle">
+          暂无可核验的同路人资料。你可以保存个人练习安排；当前未开放真实多人匹配与同步。
+        </p>
+      )}
       <div className="grid gap-6 xl:grid-cols-[1fr_340px]">
         <div className="space-y-5">
           <FilterButtons
@@ -602,7 +640,9 @@ export function BuddyPage() {
             />
           </div>
           <p className="text-xs text-subtle">
-            按共同方向和练习时间筛选 · {visible.length} 位样本同路人
+            {mode === 'api'
+              ? '真实同路人资料尚未接入'
+              : `按共同方向和练习时间筛选 · ${visible.length} 位样本同路人`}
           </p>
           {(requestError || error || learningError || validation) && (
             <p role="alert">{requestError || error || learningError || validation}</p>
@@ -653,8 +693,12 @@ export function BuddyPage() {
           {!visible.length && (
             <EmptyState
               kind="community"
-              title="还没有匹配的样本同路人"
-              description="调整方向、时间或关键词，也可以创建自己的练习组。"
+              title={mode === 'api' ? '暂时没有真实同路人资料' : '还没有匹配的样本同路人'}
+              description={
+                mode === 'api'
+                  ? '你可以先在个人练习组中整理练习安排和题单。'
+                  : '调整方向、时间或关键词，也可以创建自己的练习组。'
+              }
               action={
                 <Button
                   onClick={() => {
@@ -675,7 +719,9 @@ export function BuddyPage() {
             .filter((r) => role === '全部方向' || r.role === role)
             .map((r) => (
               <Panel key={r.id}>
-                <SmallTag>{r.mine ? '我创建的本机组' : '样本练习组'}</SmallTag>
+                <SmallTag>
+                  {mode === 'api' ? '我的练习组' : r.mine ? '我创建的本机组' : '样本练习组'}
+                </SmallTag>
                 <h3 className="my-4 font-medium">{r.title}</h3>
                 <p className="text-xs leading-7 text-subtle">
                   {r.role} · {r.schedule}
@@ -692,14 +738,19 @@ export function BuddyPage() {
                     ? '打开练习房间'
                     : r.members >= r.capacity
                       ? '房间已满'
-                      : '加入本机练习组'}
+                      : mode === 'api'
+                        ? '加入练习组'
+                        : '加入本机练习组'}
                 </Button>
               </Panel>
             ))}
           {!rooms.some((r) => role === '全部方向' || r.role === role) && (
             <p className="text-xs text-subtle">这个方向还没有练习组。</p>
           )}
-          <Button variant="outline" onClick={() => setCreating(true)}>
+          {!questions.length && (
+            <p className="text-xs text-subtle">题库收录真实题目后可创建练习组。</p>
+          )}
+          <Button disabled={!questions.length} variant="outline" onClick={() => setCreating(true)}>
             创建新的练习组
           </Button>
         </div>
@@ -707,8 +758,12 @@ export function BuddyPage() {
       <Modal
         open={creating}
         onClose={() => setCreating(false)}
-        title="创建本机练习组"
-        description="配置练习时间与题单；成员名额为本机模拟。"
+        title={mode === 'api' ? '创建个人练习组' : '创建本机练习组'}
+        description={
+          mode === 'api'
+            ? '保存你的练习时间与题单，当前不支持邀请或同步其他成员。'
+            : '配置练习时间与题单；成员名额为本机模拟。'
+        }
       >
         <div className="space-y-4">
           <Field label="练习组名称">
@@ -769,7 +824,11 @@ export function BuddyPage() {
         open={!!active}
         onClose={() => setCurrent(null)}
         title={active?.title || '练习房间'}
-        description="共享题库和备忘均为本机记录，进度读取你的题库自评。"
+        description={
+          mode === 'api'
+            ? '题单和备忘保存到你的账号，进度读取自己的题库自评。'
+            : '共享题库和备忘均为本机记录，进度读取你的题库自评。'
+        }
       >
         {active && (
           <div className="space-y-5">
@@ -811,7 +870,7 @@ export function BuddyPage() {
               </p>
             )}
             {collectionError && <p role="alert">{collectionError}</p>}
-            <h3 className="text-sm font-semibold">本机组队备忘</h3>
+            <h3 className="text-sm font-semibold">练习备忘</h3>
             {active.notes.map((n) => (
               <div key={n.id} className="rounded bg-background p-3">
                 <p className="whitespace-pre-wrap break-words text-sm">{n.content}</p>
@@ -840,11 +899,11 @@ export function BuddyPage() {
               placeholder="记录练习安排和反馈"
             />
             <Button
-              onClick={() => {
+              onClick={async () => {
                 try {
                   const text = validateText(note, 1, 1000);
                   if (
-                    saveRooms((v) =>
+                    await saveRooms((v) =>
                       v.map((r) =>
                         r.id === active.id
                           ? {
@@ -869,9 +928,9 @@ export function BuddyPage() {
             <div className="flex flex-wrap gap-3 border-t border-border pt-4">
               <Button
                 variant="outline"
-                onClick={() => {
+                onClick={async () => {
                   if (
-                    saveRooms((v) =>
+                    await saveRooms((v) =>
                       v.map((r) =>
                         r.id === active.id
                           ? { ...r, joined: false, members: Math.max(0, r.members - 1) }
@@ -887,8 +946,9 @@ export function BuddyPage() {
               {active.mine && (
                 <Button
                   variant="ghost"
-                  onClick={() => {
-                    if (saveRooms((v) => v.filter((r) => r.id !== active.id))) setCurrent(null);
+                  onClick={async () => {
+                    if (await saveRooms((v) => v.filter((r) => r.id !== active.id)))
+                      setCurrent(null);
                   }}
                 >
                   删除我创建的组
@@ -976,13 +1036,14 @@ const signals = [
   },
 ];
 export function RadarPage() {
+  const { mode } = useCampus();
   const [scope, setScope] = useState('全部公司');
   const favorites = useRadarStore((s) => s.favorites);
   const [type, setType] = useState('全部信号');
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState(1);
   const [subscribed, setSubscribed] = useLocal<number[]>('signals-saved', []);
-  const visible = signals.filter(
+  const visible = (mode === 'api' ? [] : signals).filter(
     (s) =>
       (type === '全部信号' || s.type === type) &&
       (scope === '全部公司' ||
@@ -991,6 +1052,19 @@ export function RadarPage() {
       (getCompany(s.companyId).name + s.title).includes(query),
   );
   const current = visible.find((s) => s.id === selected) ?? visible[0];
+  if (mode === 'api')
+    return (
+      <EmptyState
+        kind="community"
+        title="暂无真实招聘情报"
+        description="当前尚未接入可核验的招聘信号与公司热度。请前往岗位页查看已收录的信息。"
+        action={
+          <Button asChild variant="outline">
+            <Link href="/jobs">查看岗位</Link>
+          </Button>
+        }
+      />
+    );
   return (
     <div className="space-y-6">
       <PageHeader

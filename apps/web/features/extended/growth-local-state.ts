@@ -10,12 +10,11 @@ export function useValidatedArray<T>(key: string, schema: z.ZodType<T>, initial:
   const checked = useMemo(() => cleanLocalRecords(stored, schema), [stored, schema]);
   useEffect(() => {
     if (checked.invalid)
-      toast.error(
-        `有 ${checked.invalid} 条损坏的本地记录已跳过。其他记录仍可使用；可从设置导出备份。`,
-        { id: `invalid-${key}` },
-      );
+      toast.error(`有 ${checked.invalid} 条格式异常的记录已跳过，其他记录仍可使用。`, {
+        id: `invalid-${key}`,
+      });
   }, [checked.invalid, key]);
-  function save(next: SetStateAction<T[]>): boolean {
+  async function save(next: SetStateAction<T[]>): Promise<boolean> {
     return persist((raw) => {
       const current = cleanLocalRecords(raw, schema).value;
       const value = typeof next === 'function' ? next(current) : next;
@@ -31,9 +30,9 @@ export function useValidatedValue<T>(key: string, schema: z.ZodType<T>, initial:
   const checked = useMemo(() => schema.safeParse(stored), [stored, schema]);
   useEffect(() => {
     if (!checked.success)
-      toast.error('本地提醒偏好格式损坏，已使用空白偏好。', { id: `invalid-${key}` });
+      toast.error('提醒偏好格式异常，已使用空白偏好。', { id: `invalid-${key}` });
   }, [checked.success, key]);
-  function save(next: SetStateAction<T>): boolean {
+  async function save(next: SetStateAction<T>): Promise<boolean> {
     return persist((raw) => {
       const parsed = schema.safeParse(raw);
       const current = parsed.success ? parsed.data : initial;

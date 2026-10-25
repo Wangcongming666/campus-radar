@@ -41,11 +41,12 @@ import { useKnowledgeLocal, downloadKnowledge } from '@/lib/knowledge-local';
 import { buildExperience, summarizeExperience, type ExperienceDraft } from '@/lib/knowledge-domain';
 import { Modal, Field, Pick } from '@/features/extended/common';
 import { LocalDiscussion } from './local-discussion';
+import { useCampus } from '@/components/campus-provider';
 import s from './knowledge.module.css';
 const emptyDraft: ExperienceDraft = {
   title: '',
   content: '',
-  companyId: 'tencent',
+  companyId: '',
   role: '前端开发',
   round: '一面',
   tags: '',
@@ -56,7 +57,7 @@ function ExperienceEditor({
   onClose,
 }: {
   initial?: Experience;
-  onSave: (value: Experience) => boolean;
+  onSave: (value: Experience) => Promise<boolean>;
   onClose: () => void;
 }) {
   const [saved, saveDraft, storageError, ready] = useKnowledgeLocal<ExperienceDraft>(
@@ -70,12 +71,15 @@ function ExperienceEditor({
           round: initial.round,
           tags: initial.tags.join(','),
         }
-      : emptyDraft,
+      : { ...emptyDraft, companyId: companies[0]?.id ?? '' },
   );
   const [draft, setDraft] = useState(saved);
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
-  const name = useRadarStore((s) => s.userName);
+  const [saving, setSaving] = useState(false);
+  const localName = useRadarStore((s) => s.userName);
+  const { mode, user } = useCampus();
+  const name = mode === 'api' ? user?.displayName || '同学' : localName;
   useEffect(() => {
     if (ready) setDraft(saved);
   }, [ready, saved]);
@@ -83,21 +87,26 @@ function ExperienceEditor({
     setDraft((v) => ({ ...v, [key]: value }));
     setStatus('有未保存修改');
   }
-  function publish() {
+  async function publish() {
+    if (saving) return;
+    setSaving(true);
+    setError('');
     try {
       const value = buildExperience(
         draft,
         initial?.author ?? name,
-        initial?.id ?? `local-exp-${crypto.randomUUID()}`,
+        initial?.id ?? (mode === 'api' ? crypto.randomUUID() : `local-exp-${crypto.randomUUID()}`),
       );
-      if (onSave(value)) {
-        saveDraft(emptyDraft);
+      if (await onSave(value)) {
+        await saveDraft({ ...emptyDraft, companyId: companies[0]?.id ?? '' });
         onClose();
       } else {
-        setError('保存失败：浏览器存储不可用或空间不足。编辑内容已保留，请释放空间后重试。');
+        setError('保存失败，编辑内容已保留。请稍后重试。');
       }
     } catch (e) {
       setError((e as Error).message);
+    } finally {
+      setSaving(false);
     }
   }
   return (
@@ -105,7 +114,11 @@ function ExperienceEditor({
       open
       onClose={onClose}
       title={initial ? '编辑我的面经' : '写下你的面试复盘'}
-      description="在本机发布后可从广场和详情阅读；关闭前可保存草稿。不会公开至网络。"
+      description={
+        mode === 'api'
+          ? '保存后可在面经广场和详情阅读；草稿随账号保存。'
+          : '在本机发布后可从广场和详情阅读；关闭前可保存草稿。不会公开至网络。'
+      }
     >
       <div className="space-y-4">
         <Field label="面经标题">
@@ -122,6 +135,7 @@ function ExperienceEditor({
               value={draft.companyId}
               onChange={(e) => field('companyId', e.target.value)}
             >
+              {!companies.length && <option value="">暂无可选企业</option>}
               {companies.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
@@ -163,7 +177,8 @@ function ExperienceEditor({
           />
         </Field>
         <p className="text-xs text-subtle">
-          {draft.content.length} / 20000 · {status || '草稿可保存至本机'}
+          {draft.content.length} / 20000 ·{' '}
+          {status || (mode === 'api' ? '草稿可保存至账号' : '草稿可保存至本机')}
         </p>
         {(error || storageError) && (
           <p role="alert" className="text-destructive text-sm">
@@ -172,20 +187,24 @@ function ExperienceEditor({
         )}
         <div className="flex flex-wrap gap-3">
           <Button
+            disabled={saving}
             variant="outline"
-            onClick={() => {
-              if (saveDraft(draft)) setStatus('草稿已保存');
+            onClick={async () => {
+              if (await saveDraft(draft)) setStatus('草稿已保存');
             }}
           >
-            保存本地草稿
+            保存草稿
           </Button>
-          <Button onClick={publish}>{initial ? '保存面经修改' : '发布到本机广场'}</Button>
+          <Button disabled={saving || !companies.length} onClick={publish}>
+            {initial ? '保存面经修改' : mode === 'api' ? '发布面经' : '发布到本机广场'}
+          </Button>
         </div>
       </div>
     </Modal>
   );
 }
 export function ExperiencesPage() {
+  const { mode } = useCampus();
   const [local, save, error] = useKnowledgeLocal<Experience[]>('knowledge-experiences', []);
   const [tab, setTab] = useState('为你推荐');
   const [search, setSearch] = useState('');
@@ -197,7 +216,7 @@ export function ExperiencesPage() {
   const [limit, setLimit] = useState(6);
   const favorites = useRadarStore((s) => s.favorites);
   const toggle = useRadarStore((s) => s.toggleFavorite);
-  const all = [...local, ...experiences];
+  const all = [...new Map([...local, ...experiences].map((item) => [item.id, item])).values()];
   const filtered = all
     .filter(
       (e) =>
@@ -223,46 +242,53 @@ export function ExperiencesPage() {
           </Button>
         }
       />
-      <section className={s.hero}>
-        <div className={s.heroCopy}>
-          <SmallTag active>本周精选 · 演示内容</SmallTag>
-          <Link href="/experiences/exp-1">
-            <h2>
-              腾讯 WXG 前端三面复盘：
-              <br />
-              从原理到工程实践
-            </h2>
-          </Link>
-          <p>
-            基础讲清楚，项目讲透彻。看一次完整的面试复盘，
-            <br className="hidden lg:block" />
-            为下一场对话做好准备。
-          </p>
-          <div className={s.heroMeta}>
-            <span>一颗努力的栗子</span>
-            <span>8 分钟阅读</span>
-            <Link href="/experiences/exp-1" className="text-primary inline-flex gap-1 items-center">
-              开始阅读 <ArrowRight size={12} />
+      {mode === 'mock' && (
+        <section className={s.hero}>
+          <div className={s.heroCopy}>
+            <SmallTag active>本周精选 · 演示内容</SmallTag>
+            <Link href="/experiences/exp-1">
+              <h2>
+                腾讯 WXG 前端三面复盘：
+                <br />
+                从原理到工程实践
+              </h2>
             </Link>
+            <p>
+              基础讲清楚，项目讲透彻。看一次完整的面试复盘，
+              <br className="hidden lg:block" />
+              为下一场对话做好准备。
+            </p>
+            <div className={s.heroMeta}>
+              <span>一颗努力的栗子</span>
+              <span>8 分钟阅读</span>
+              <Link
+                href="/experiences/exp-1"
+                className="text-primary inline-flex gap-1 items-center"
+              >
+                开始阅读 <ArrowRight size={12} />
+              </Link>
+            </div>
           </div>
-        </div>
-        <div className={s.heroVisual}>
-          <div className={s.quote}>
-            “基础问题做到能举例，
-            <br />
-            项目描述做到有证据。”
+          <div className={s.heroVisual}>
+            <div className={s.quote}>
+              “基础问题做到能举例，
+              <br />
+              项目描述做到有证据。”
+            </div>
+            <small>摘自精选面经 · 校招雷达演示样本</small>
+            <div className="flex gap-2 ml-5 mt-5">
+              {['React', '浏览器原理', '项目深挖'].map((t) => (
+                <SmallTag key={t}>{t}</SmallTag>
+              ))}
+            </div>
           </div>
-          <small>摘自精选面经 · 校招雷达演示样本</small>
-          <div className="flex gap-2 ml-5 mt-5">
-            {['React', '浏览器原理', '项目深挖'].map((t) => (
-              <SmallTag key={t}>{t}</SmallTag>
-            ))}
-          </div>
-        </div>
-      </section>
-      <DemoNotice>
-        精选资料为虚构样本；你的面经在当前浏览器发布、编辑与阅读，不会公开到网络。
-      </DemoNotice>
+        </section>
+      )}
+      {mode === 'mock' && (
+        <DemoNotice>
+          精选资料为虚构样本；你的面经在当前浏览器发布、编辑与阅读，不会公开到网络。
+        </DemoNotice>
+      )}
       <PageTabs
         items={['为你推荐', '热门面经', '我的收藏', '我的发布']}
         value={tab}
@@ -314,7 +340,13 @@ export function ExperiencesPage() {
                 <div className="flex justify-between gap-3">
                   <CompanyLogo companyId={e.companyId} size="sm" />
                   <SmallTag>
-                    {local.some((x) => x.id === e.id) ? '我的本机面经' : '演示样本'}
+                    {local.some((x) => x.id === e.id)
+                      ? mode === 'api'
+                        ? '我的面经'
+                        : '我的本机面经'
+                      : mode === 'api'
+                        ? '面经'
+                        : '演示样本'}
                   </SmallTag>
                   <FavoriteButton
                     active={favorites.includes(`experience:${e.id}`)}
@@ -386,13 +418,14 @@ export function ExperiencesPage() {
       {publish && (
         <ExperienceEditor
           onClose={() => setPublish(false)}
-          onSave={(value) => save((v) => [value, ...v])}
+          onSave={async (value) => await save((v) => [value, ...v])}
         />
       )}
     </>
   );
 }
 export function ExperienceDetail({ id }: { id: string }) {
+  const { mode } = useCampus();
   const [local, save, error, ready] = useKnowledgeLocal<Experience[]>('knowledge-experiences', []);
   const [likes, setLikes, likeError] = useKnowledgeLocal<string[]>('experience-likes', []);
   const [summaries, saveSummaries, summaryError] = useKnowledgeLocal<Record<string, string>>(
@@ -432,7 +465,15 @@ export function ExperienceDetail({ id }: { id: string }) {
         <article className={s.article}>
           <div className="flex justify-between">
             <CompanyLogo companyId={exp.companyId} />
-            <SmallTag>{mine ? '我的本机面经' : '演示面经'}</SmallTag>
+            <SmallTag>
+              {mine
+                ? mode === 'api'
+                  ? '我的面经'
+                  : '我的本机面经'
+                : mode === 'api'
+                  ? '面经'
+                  : '演示面经'}
+            </SmallTag>
           </div>
           <h1>{exp.title}</h1>
           <p className="text-xs text-subtle">
@@ -529,10 +570,10 @@ export function ExperienceDetail({ id }: { id: string }) {
         <ExperienceEditor
           initial={exp}
           onClose={() => setEditing(false)}
-          onSave={(value) => {
-            const ok = save((v) => v.map((x) => (x.id === id ? value : x)));
+          onSave={async (value) => {
+            const ok = await save((v) => v.map((x) => (x.id === id ? value : x)));
             if (ok)
-              saveSummaries((v) => {
+              await saveSummaries((v) => {
                 const next = { ...v };
                 delete next[id];
                 return next;
@@ -541,12 +582,12 @@ export function ExperienceDetail({ id }: { id: string }) {
           }}
         />
       )}
-      <Modal open={deleting} onClose={() => setDeleting(false)} title="删除这篇本机面经？">
-        <p className="text-sm leading-7">删除后将从本机广场移除。收藏入口也将清除。</p>
+      <Modal open={deleting} onClose={() => setDeleting(false)} title="删除这篇面经？">
+        <p className="text-sm leading-7">删除后将从面经列表移除。</p>
         <Button
-          onClick={() => {
-            if (save((v) => v.filter((x) => x.id !== id))) {
-              if (favorites.includes(`experience:${id}`)) toggle('experience', id);
+          onClick={async () => {
+            if (await save((v) => v.filter((x) => x.id !== id))) {
+              if (favorites.includes(`experience:${id}`)) await toggle('experience', id);
               setDeleting(false);
             }
           }}
@@ -555,17 +596,20 @@ export function ExperienceDetail({ id }: { id: string }) {
         </Button>
       </Modal>
       <div className="mt-6">
-        <DemoNotice>
-          {mine
-            ? '这篇内容由你在本机编写，只有当前浏览器可见。'
-            : '本文为虚构产品样本，不代表真实面试经历。'}
-        </DemoNotice>
+        {mode === 'mock' && (
+          <DemoNotice>
+            {mine
+              ? '这篇内容由你在本机编写，只有当前浏览器可见。'
+              : '本文为虚构产品样本，不代表真实面试经历。'}
+          </DemoNotice>
+        )}
       </div>
     </>
   );
 }
 export function HandbookPage() {
-  const [active, setActive] = useState(chapters[0].id);
+  const { mode } = useCampus();
+  const [active, setActive] = useState(chapters[0]?.id ?? '');
   const [section, setSection] = useState(0);
   const [query, setQuery] = useState('');
   const completed = useRadarStore((s) => s.completed);
@@ -605,6 +649,14 @@ export function HandbookPage() {
     window.history.replaceState({}, '', `/handbook?chapter=${id}`);
   }
   const progress = chapters.filter((c) => completed.includes(c.id)).length;
+  if (!chapter)
+    return (
+      <EmptyState
+        kind="knowledge"
+        title="知识手册暂未收录内容"
+        description="真实章节入库后会显示在这里。"
+      />
+    );
   return (
     <>
       <PageHeader
@@ -623,9 +675,11 @@ export function HandbookPage() {
               <BookOpen size={16} className="text-primary" />
               面试成长手册
             </h2>
-            <p>演示知识体系 · 6 个章节</p>
+            <p>
+              {mode === 'api' ? '知识体系' : '演示知识体系'} · {chapters.length} 个章节
+            </p>
             <div className="mt-4">
-              <ProgressBar value={(progress / chapters.length) * 100} />
+              <ProgressBar value={chapters.length ? (progress / chapters.length) * 100 : 0} />
             </div>
             <Input
               aria-label="搜索章节"
@@ -640,7 +694,7 @@ export function HandbookPage() {
               .toLowerCase()
               .includes(query.toLowerCase()),
           ) && <p className="p-4 text-xs text-subtle">没有匹配章节，请换一个关键词。</p>}
-          {['前端开发', '计算机基础', '面试方法'].map((cat) => (
+          {[...new Set(chapters.map((item) => item.category))].map((cat) => (
             <details open key={cat}>
               <summary>{cat}</summary>
               {chapters
@@ -685,9 +739,9 @@ export function HandbookPage() {
             </span>
             <span className="flex gap-1 items-center">
               <Clock size={11} />
-              预计 12 分钟
+              预计 {Math.max(1, Math.ceil(chapter.content.length / 400))} 分钟
             </span>
-            <span className="ml-auto">演示内容</span>
+            {mode === 'mock' && <span className="ml-auto">演示内容</span>}
           </div>
           <nav className="flex flex-wrap gap-2 mt-6">
             {chapter.sections.map((t, i) => (
@@ -739,8 +793,8 @@ export function HandbookPage() {
             <Button
               size="sm"
               variant={completed.includes(active) ? 'outline' : 'default'}
-              onClick={() => {
-                toggleCompleted(active);
+              onClick={async () => {
+                if ((await toggleCompleted(active)) === false) return;
                 toast.success(
                   completed.includes(active) ? '已取消完成标记' : '本章已完成，继续积累！',
                 );
@@ -796,14 +850,16 @@ export function HandbookPage() {
               }}
             />
             <div className="flex justify-between items-center mt-3">
-              <span className="text-[9px] text-subtle">{noteStatus || '仅保存在当前浏览器'}</span>
+              <span className="text-[9px] text-subtle">
+                {noteStatus || (mode === 'api' ? '保存后随账号同步' : '仅保存在当前浏览器')}
+              </span>
               <Button
                 variant="ghost"
                 size="sm"
                 className="h-7 text-[10px]"
-                onClick={() => {
-                  if (saveNotes((v) => ({ ...v, [`chapter:${active}`]: noteDraft })))
-                    setNoteStatus('笔记已保存到本地');
+                onClick={async () => {
+                  if (await saveNotes((v) => ({ ...v, [`chapter:${active}`]: noteDraft })))
+                    setNoteStatus(mode === 'api' ? '笔记已保存到账号' : '笔记已保存到本地');
                 }}
               >
                 保存笔记
@@ -854,8 +910,8 @@ export function HandbookPage() {
               <div className="mt-3 flex flex-wrap gap-2">
                 <Button
                   size="sm"
-                  onClick={() => {
-                    if (saveTemplates((v) => ({ ...v, [active]: templateDraft })))
+                  onClick={async () => {
+                    if (await saveTemplates((v) => ({ ...v, [active]: templateDraft })))
                       setNoteStatus('回答模板已保存');
                   }}
                 >
@@ -892,9 +948,11 @@ export function HandbookPage() {
         </aside>
       </div>
       <div className="mt-6">
-        <DemoNotice>
-          手册为精简演示内容，部分小节共享章节说明；笔记与完成状态保存于本机。
-        </DemoNotice>
+        {mode === 'mock' && (
+          <DemoNotice>
+            手册为精简演示内容，部分小节共享章节说明；笔记与完成状态保存于本机。
+          </DemoNotice>
+        )}
       </div>
     </>
   );

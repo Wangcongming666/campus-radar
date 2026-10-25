@@ -33,13 +33,14 @@ import { navigation, routeTitle } from '@/lib/navigation';
 import { useRadarStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import { useCampus } from './campus-provider';
-import { PendingCloudModule, SessionBoundary } from './api-workspace';
+import { SessionBoundary } from './api-workspace';
 import { toast } from 'sonner';
+import { ApiWorkspaceProvider } from './api-workspace-provider';
 export function AppShell({ children }: { children: ReactNode }) {
   const { mode } = useCampus();
   return mode === 'api' ? (
     <SessionBoundary>
-      <WorkspaceShell cloud>{children}</WorkspaceShell>
+      <ApiWorkspaceProvider><WorkspaceShell cloud>{children}</WorkspaceShell></ApiWorkspaceProvider>
     </SessionBoundary>
   ) : (
     <WorkspaceShell>{children}</WorkspaceShell>
@@ -52,12 +53,12 @@ function WorkspaceShell({ children, cloud = false }: { children: ReactNode; clou
   const readNotifications = useRadarStore((s) => s.notes['notifications-read']);
   const hiddenNotifications = useRadarStore((s) => s.notes['notifications-hidden']);
   const localNotifications = useRadarStore((s) => s.notifications);
-  let unread = 5;
+  let unread = cloud ? 0 : 5;
   try {
     const read: string[] = JSON.parse(readNotifications ?? '[]'),
       hidden: string[] = JSON.parse(hiddenNotifications ?? '[]');
     unread = [
-      ...Array.from({ length: 5 }, (_, index) => `notice-${index + 1}`),
+      ...(cloud ? [] : Array.from({ length: 5 }, (_, index) => `notice-${index + 1}`)),
       ...localNotifications.map((notice) => notice.id),
     ].filter((id) => !read.includes(id) && !hidden.includes(id)).length;
   } catch {}
@@ -186,7 +187,7 @@ function WorkspaceShell({ children, cloud = false }: { children: ReactNode; clou
             </div>
           </div>
           <div className="flex items-center gap-3 sm:gap-5">
-            {!cloud && (
+            {(
               <button
                 className="topbar-search"
                 onClick={() => setSearch(true)}
@@ -207,11 +208,20 @@ function WorkspaceShell({ children, cloud = false }: { children: ReactNode; clou
                 size="icon"
                 className="size-8 text-muted-foreground"
                 aria-label="切换明暗主题"
-                onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+                disabled={cloud && campus.busy}
+                onClick={async () => {
+                  const next = resolvedTheme === 'dark' ? 'light' : 'dark';
+                  try {
+                    if (cloud) await campus.updateProfile({ theme: next });
+                    setTheme(next);
+                  } catch (failure) {
+                    toast.error(failure instanceof Error ? failure.message : '外观保存失败，请重试');
+                  }
+                }}
               >
                 {mounted && resolvedTheme === 'dark' ? <Sun /> : <Moon />}
               </Button>
-              {!cloud && (
+              {(
                 <Button
                   variant="ghost"
                   size="icon"
@@ -253,7 +263,7 @@ function WorkspaceShell({ children, cloud = false }: { children: ReactNode; clou
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.18 }}
           >
-            {cloud && pathname !== '/me' ? <PendingCloudModule /> : children}
+            {children}
           </motion.div>
         </main>
       </div>
@@ -270,7 +280,7 @@ function WorkspaceShell({ children, cloud = false }: { children: ReactNode; clou
           </Link>
         ))}
       </nav>
-      {!cloud && (
+      {(
         <>
           <GlobalSearch open={search} setOpen={setSearch} />
           <PreviewDrawer />

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Mic, Square, Volume2, Download, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { isApiMode } from '@/lib/api/workspace-client';
 import {
   deleteInterviewFile,
   downloadInterviewBlob,
@@ -168,7 +169,7 @@ export function InterviewAudio({
 }: {
   audioId?: string;
   audioName?: string;
-  onChange: (value: { audioId?: string; audioName?: string }) => boolean;
+  onChange: (value: { audioId?: string; audioName?: string }) => Promise<boolean>;
 }) {
   const [recording, setRecording] = useState(false);
   const [seconds, setSeconds] = useState(0);
@@ -229,7 +230,7 @@ export function InterviewAudio({
     const id = `audio-${crypto.randomUUID()}`;
     try {
       await saveInterviewFile(id, blob, name);
-      if (!mounted.current || !callback.current({ audioId: id, audioName: name })) {
+      if (!mounted.current || !(await callback.current({ audioId: id, audioName: name }))) {
         await deleteInterviewFile(id);
         return;
       }
@@ -276,9 +277,9 @@ export function InterviewAudio({
           setError('没有录到声音，请检查麦克风后重试。');
           return;
         }
-        if (blob.size > 100 * 1024 * 1024) {
+        if (blob.size > 30 * 1024 * 1024) {
           setPending({ blob, name: '面试录音.webm' });
-          setError('录音超过 100 MB，请下载原件并分段导入。');
+          setError('录音超过 30 MB，请下载原件并分段导入。');
           return;
         }
         void storeAudio(
@@ -313,20 +314,21 @@ export function InterviewAudio({
       setPending(null);
       return;
     }
-    if (!callback.current({ audioId: undefined, audioName: undefined })) return;
+    if (!(await callback.current({ audioId: undefined, audioName: undefined }))) return;
     try {
       await deleteInterviewFile(audioId);
       setPending(null);
     } catch (e) {
-      callback.current({ audioId, audioName });
+      await callback.current({ audioId, audioName });
       setError(e instanceof Error ? e.message : '删除失败');
     }
   }
   return (
     <div className="space-y-4">
       <p className="text-xs leading-6 text-muted-foreground">
-        点击录制才会申请麦克风权限，音频仅保存在本机。离开此页前请停止并保存录音。导入音频不会自动识别文字，可手动转写或导入
-        TXT。
+        点击录制才会申请麦克风权限，
+        {isApiMode() ? '音频保存在当前账户的私有存储中。' : '音频仅保存在本机。'}
+        离开此页前请停止并保存录音。导入音频不会自动识别文字，可手动转写或导入 TXT。
       </p>
       <div className="flex flex-wrap gap-2">
         <Button
@@ -341,7 +343,7 @@ export function InterviewAudio({
             : '开始录音'}
         </Button>
         <label className="min-w-0 flex-1 text-xs text-muted-foreground">
-          导入音频（最多 100 MB）
+          导入音频（最多 30 MB）
           <Input
             aria-label="导入面试音频"
             className="mt-2"
@@ -351,8 +353,8 @@ export function InterviewAudio({
             onChange={(event) => {
               const file = event.target.files?.[0];
               if (!file) return;
-              if (!file.size || file.size > 100 * 1024 * 1024) {
-                setError('请选择非空且不超过 100 MB 的音频。');
+              if (!file.size || file.size > 30 * 1024 * 1024) {
+                setError('请选择非空且不超过 30 MB 的音频。');
                 return;
               }
               if (
@@ -375,14 +377,14 @@ export function InterviewAudio({
       )}
       {busy && (
         <p role="status" className="text-xs">
-          正在保存音频到本机…
+          正在保存音频…
         </p>
       )}
       {url && (
         <div className="space-y-3">
           <p className="break-all text-xs text-muted-foreground">
             {pending?.name ?? audioName}
-            {pending ? ' · 尚未持久保存' : ' · 已保存在本机'}
+            {pending ? ' · 尚未持久保存' : ' · 已保存'}
           </p>
           <audio controls src={url} className="w-full" aria-label="面试录音回放" />
           <div className="flex flex-wrap gap-2">
@@ -393,7 +395,7 @@ export function InterviewAudio({
             {pending && (
               <Button
                 size="sm"
-                disabled={busy || pending.blob.size > 100 * 1024 * 1024}
+                disabled={busy || pending.blob.size > 30 * 1024 * 1024}
                 onClick={() => void storeAudio(pending.blob, pending.name)}
               >
                 重试保存录音

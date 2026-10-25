@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { PageHeader, Panel, DemoNotice, StatCard, SmallTag, EmptyState } from '@/components/shared';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -42,7 +42,8 @@ export function PlannerPage() {
   const [milestone, setMilestone] = useState<Milestone | null>(null);
   const [error, setError] = useState('');
   const [filter, setFilter] = useState('全部里程碑');
-  const today = new Date().toLocaleDateString('sv-SE');
+  const reminding = useRef(new Set<string>());
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
   const due = tasks.filter((t) => t.remind && t.status !== '已完成' && t.date && t.date <= today);
   const visibleTasks = tasks.filter(
     (t) =>
@@ -56,32 +57,37 @@ export function PlannerPage() {
       (t) =>
         t.remind && t.status !== '已完成' && t.date && t.date <= today && reminded[t.id] !== t.date,
     );
-    if (
-      !pending.length ||
-      !setReminded({ ...reminded, ...Object.fromEntries(pending.map((t) => [t.id, t.date])) })
-    )
-      return;
-    pending.forEach((t) =>
-      notify({
-        title: `规划任务到期：${t.title}`,
-        content: `截止 ${t.date}，当前状态：${t.status}。这是本机规划提醒。`,
-        category: '学习提醒',
-        href: '/planner',
-      }),
-    );
+    for (const task of pending) {
+      const token = `${task.id}:${task.date}`;
+      if (reminding.current.has(token)) continue;
+      reminding.current.add(token);
+      void (async () => {
+        try {
+          const saved = await notify({
+            title: `规划任务到期：${task.title}`,
+            content: `截止 ${task.date}，当前状态：${task.status}。`,
+            category: '学习提醒',
+            href: '/planner',
+          });
+          if (saved) await setReminded((current) => ({ ...current, [task.id]: task.date }));
+        } finally {
+          reminding.current.delete(token);
+        }
+      })();
+    }
   }, [tasks, reminded, notify, today]);
-  function saveTask() {
+  async function saveTask() {
     if (!draft?.title.trim()) {
       setError('请输入任务名称');
       return;
     }
     const item = { ...draft, title: draft.title.trim(), id: draft.id || crypto.randomUUID() };
     if (
-      !setTasks((xs) =>
+      !(await setTasks((xs) =>
         xs.some((x) => x.id === item.id)
           ? xs.map((x) => (x.id === item.id ? item : x))
           : [...xs, item],
-      )
+      ))
     )
       return;
     setDraft(null);
@@ -114,7 +120,10 @@ export function PlannerPage() {
         }
       />
       <DemoNotice>
-        任务与提醒保存在本机；打开本页时检查到期任务并生成一次站内通知，不触发系统推送。
+        {process.env.NEXT_PUBLIC_DATA_MODE === 'api'
+          ? '任务与提醒随账号保存；'
+          : '任务与提醒保存在本机；'}
+        打开本页时检查到期任务并生成站内通知，不触发系统推送。
       </DemoNotice>
       <div className="grid gap-4 md:grid-cols-3">
         <StatCard label="任务总数" value={tasks.length} />
@@ -125,7 +134,7 @@ export function PlannerPage() {
         <StatCard label="到期提醒" value={due.length} />
       </div>
       {due.length > 0 && (
-        <Panel title="本地到期提醒">
+        <Panel title="到期提醒">
           <div role="status" className="space-y-2">
             {due.map((t) => (
               <p key={t.id} className="text-sm">
@@ -191,11 +200,14 @@ export function PlannerPage() {
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={() => {
-                      if (!setMilestones((xs) => xs.filter((x) => x.id !== m.id))) return;
-                      setTasks((xs) =>
-                        xs.map((t) => (t.milestoneId === m.id ? { ...t, milestoneId: '' } : t)),
-                      );
+                    onClick={async () => {
+                      if (!(await setMilestones((xs) => xs.filter((x) => x.id !== m.id)))) return;
+                      if (
+                        !(await setTasks((xs) =>
+                          xs.map((t) => (t.milestoneId === m.id ? { ...t, milestoneId: '' } : t)),
+                        ))
+                      )
+                        return;
                       if (filter === m.title) setFilter('全部里程碑');
                     }}
                   >
@@ -225,7 +237,7 @@ export function PlannerPage() {
                     <p className="text-xs text-muted-foreground">
                       {milestones.find((m) => m.id === t.milestoneId)?.title ?? '未分组'} ·{' '}
                       {t.date || '无截止日'}
-                      {t.remind ? ' · 开启本地提醒' : ''}
+                      {t.remind ? ' · 开启到期提醒' : ''}
                     </p>
                     <Pick
                       label={`${t.title}的任务状态`}
@@ -273,9 +285,9 @@ export function PlannerPage() {
       >
         <form
           className="grid gap-4"
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault();
-            saveTask();
+            await saveTask();
           }}
         >
           {draft && (
@@ -341,7 +353,7 @@ export function PlannerPage() {
       >
         <form
           className="grid gap-4"
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault();
             if (!milestone?.title.trim()) {
               setError('请输入里程碑名称');
@@ -360,9 +372,9 @@ export function PlannerPage() {
               id: milestone.id || crypto.randomUUID(),
             };
             if (
-              !setMilestones((xs) =>
+              !(await setMilestones((xs) =>
                 xs.some((x) => x.id === m.id) ? xs.map((x) => (x.id === m.id ? m : x)) : [...xs, m],
-              )
+              ))
             )
               return;
             setMilestone(null);

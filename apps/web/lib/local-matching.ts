@@ -117,11 +117,15 @@ export function matchJob(job: Job, profile: LocalJobProfile): MatchResult {
   const resume = profile.resumeText?.trim() ?? '';
   const matched = resume ? keywords.filter((term) => includesKeyword(resume, term)) : [];
   const missing = resume ? keywords.filter((term) => !matched.includes(term)) : keywords;
-  const years = [...jd.matchAll(/(20\d{2})\s*届/g)].map((m) => m[1]);
+  const years =
+    job.graduationYears !== undefined
+      ? job.graduationYears.map(String)
+      : [...jd.matchAll(/(20\d{2})\s*届/g)].map((m) => m[1]);
   const degreeKnown =
     profile.degree &&
     PROFILE_DEGREES.includes(profile.degree) &&
     PROFILE_DEGREES.includes(job.education);
+  const roleKnown = !['', 'other', '其他', '方向未分类'].includes(job.role);
   const dimensions: MatchResult['dimensions'] = [
     {
       id: 'skills',
@@ -137,8 +141,8 @@ export function matchJob(job: Job, profile: LocalJobProfile): MatchResult {
       id: 'role',
       label: '岗位方向',
       weight: 20,
-      value: profile.roles?.length ? (profile.roles.includes(job.role) ? 100 : 0) : null,
-      reason: profile.roles?.length
+      value: roleKnown && profile.roles?.length ? (profile.roles.includes(job.role) ? 100 : 0) : null,
+      reason: !roleKnown ? '来源未明确岗位分类，暂不计分' : profile.roles?.length
         ? `你的方向：${profile.roles.join('、')}；岗位：${job.role}`
         : '未设置意向方向',
     },
@@ -146,7 +150,11 @@ export function matchJob(job: Job, profile: LocalJobProfile): MatchResult {
       id: 'city',
       label: '工作城市',
       weight: 15,
-      value: profile.cities?.length ? (profile.cities.includes(job.city) ? 100 : 0) : null,
+      value: profile.cities?.length
+        ? profile.cities.some((city) => job.city.split(/\s*[/、,，]\s*/).includes(city))
+          ? 100
+          : 0
+        : null,
       reason: profile.cities?.length
         ? `你的城市：${profile.cities.join('、')}；岗位：${job.city}`
         : '未设置意向城市',
@@ -242,9 +250,21 @@ export function preserveReturnTo(path: string, returnTo: string | null) {
   return `${path}?returnTo=${encodeURIComponent(onboardingReturnTo(returnTo))}`;
 }
 export function filterJobYear(job: Job, year: string) {
-  return !year || year === '不限' || new RegExp(`${year}\\s*届`).test(job.requirements.join(' '));
+  return (
+    !year ||
+    year === '不限' ||
+    (job.graduationYears !== undefined
+      ? job.graduationYears.includes(Number(year))
+      : new RegExp(`${year}\\s*届`).test(job.requirements.join(' ')))
+  );
 }
 export function postedOrder(value: string) {
+  if (/^\d{4}-\d{2}-\d{2}T/.test(value)) {
+    const timestamp = Date.parse(value);
+    return Number.isFinite(timestamp)
+      ? (Date.now() - timestamp) / 3600000
+      : Number.MAX_SAFE_INTEGER;
+  }
   if (value === '今天') return 0;
   if (value === '昨天') return 24;
   const n = Number(value.match(/\d+/)?.[0]);

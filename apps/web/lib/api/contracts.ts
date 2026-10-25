@@ -50,7 +50,7 @@ export type Company = {
   description: string;
   verifiedAt: string | null;
 };
-export type SourceSummary = { id: string; name: string; url: string; verifiedAt: string };
+export type SourceSummary = { id: string; name: string; url: string; verifiedAt: string | null };
 export type Salary = {
   schemaVersion: 1;
   currency: string;
@@ -61,12 +61,13 @@ export type Salary = {
   negotiable: boolean;
 };
 export type JobCard = {
+  collectedAt?: string | null;
   id: string;
   title: string;
   company: Company;
   role: string;
   cities: string[];
-  education: 'any' | 'associate' | 'bachelor' | 'master' | 'doctorate';
+  education: 'any' | 'associate' | 'bachelor' | 'master' | 'doctorate' | null;
   recruitmentType: 'campus' | 'internship';
   graduationYears: number[];
   skills: string[];
@@ -74,18 +75,21 @@ export type JobCard = {
   deadlineAt: string | null;
   deadlinePrecision: 'exact' | 'date' | 'unknown';
   sourceTimezone: string;
-  publishedAt: string;
-  verifiedAt: string;
+  publishedAt: string | null;
+  publishedDate: string | null;
+  publishedPrecision: 'exact' | 'date' | 'unknown';
+  verifiedAt: string | null;
   status: 'open' | 'closed' | 'unknown';
   source: SourceSummary;
 };
 export type Job = {
+  collectedAt?: string | null;
   id: string;
   title: string;
   company: Company;
   role: string;
   cities: string[];
-  education: 'any' | 'associate' | 'bachelor' | 'master' | 'doctorate';
+  education: 'any' | 'associate' | 'bachelor' | 'master' | 'doctorate' | null;
   recruitmentType: 'campus' | 'internship';
   graduationYears: number[];
   skills: string[];
@@ -93,8 +97,10 @@ export type Job = {
   deadlineAt: string | null;
   deadlinePrecision: 'exact' | 'date' | 'unknown';
   sourceTimezone: string;
-  publishedAt: string;
-  verifiedAt: string;
+  publishedAt: string | null;
+  publishedDate: string | null;
+  publishedPrecision: 'exact' | 'date' | 'unknown';
+  verifiedAt: string | null;
   status: 'open' | 'closed' | 'unknown';
   source: SourceSummary;
   descriptionMd: string;
@@ -138,6 +144,9 @@ export type ApplicationCard = {
     | 'OFFER'
     | 'CLOSED';
   sortKey: string;
+  date?: string;
+  resumeId?: string | null;
+  stageHistory?: StageEvent[];
   version: number;
   notes: string;
   appliedAt: string | null;
@@ -160,6 +169,8 @@ export type Application = {
     | 'OFFER'
     | 'CLOSED';
   sortKey: string;
+  date?: string;
+  resumeId?: string | null;
   version: number;
   notes: string;
   appliedAt: string | null;
@@ -172,6 +183,8 @@ export type Application = {
 };
 export type ApplicationCreate = { jobId: string };
 export type ApplicationPatch = {
+  date?: string;
+  resumeId?: string | null;
   notes?: string;
   appliedAt?: string | null;
   archived?: boolean;
@@ -271,7 +284,7 @@ export type ChapterProgress = {
 export type ProgressPut = { completed: boolean; note: string; version: number };
 export type SearchHit = {
   id: string;
-  type: 'job' | 'company' | 'experience' | 'handbook';
+  type: 'job' | 'company' | 'experience' | 'handbook' | 'question';
   title: string;
   subtitle: string;
   href: string;
@@ -285,7 +298,7 @@ export type SearchResults = {
 };
 export type Favorite = {
   id: string;
-  targetType: 'job' | 'experience' | 'company';
+  targetType: 'job' | 'experience' | 'company' | 'question';
   targetId: string;
   createdAt: string;
   target: SearchHit | null;

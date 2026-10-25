@@ -26,7 +26,7 @@ export function mapPublicExperience(row: Record<string, unknown>): Experience {
 }
 function select(sql: Db, kind: PublicKind) {
   if (kind === 'jobs')
-    return sql`select j.*,row_to_json(c) company,s.name source_name from jobs j join companies c on c.id=j.company_id left join sources s on s.id=j.source_id`;
+    return sql`select j.*,to_char(coalesce(j.published_at,j.published_date::timestamp at time zone 'UTC') at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') publication_sort_key,row_to_json(c) company,s.name source_name from jobs j join companies c on c.id=j.company_id left join sources s on s.id=j.source_id`;
   if (kind === 'companies') return sql`select c.* from companies c`;
   if (kind === 'experiences')
     return sql`select e.*,row_to_json(c) company from experiences e left join companies c on c.id=e.company_id`;
@@ -87,11 +87,18 @@ function condition(sql: Db, kind: PublicKind, params: URLSearchParams, q: string
   const direction = values(params, 'direction');
   return sql`h.status='published' ${q ? sql`and (h.title ilike ${like} or h.body_md ilike ${like})` : sql``} ${direction.length ? sql`and h.direction in ${sql(direction)}` : sql``}`;
 }
-function keyValue(kind: PublicKind, row: PublicRow, sort: string): string | null {
+function keyValue(
+  kind: PublicKind,
+  row: PublicRow,
+  sort: string,
+  rawSortKey?: unknown,
+): string | null {
   return kind === 'jobs'
     ? sort === 'deadline'
       ? (row as Job).deadlineAt
-      : (row as Job).publishedAt
+      : typeof rawSortKey === 'string'
+        ? rawSortKey
+        : null
     : kind === 'experiences'
       ? (row as Experience).publishedAt
       : null;
@@ -110,9 +117,7 @@ export function databasePublicList(
         ((kind === 'jobs' || kind === 'experiences') &&
           cursor.sort !== null &&
           !z.iso.datetime({ offset: true }).safeParse(cursor.sort).success) ||
-        (sort !== 'deadline' &&
-          (kind === 'jobs' || kind === 'experiences') &&
-          cursor.sort === null))
+        (sort !== 'deadline' && kind === 'experiences' && cursor.sort === null))
     )
       throw new ApiError(422, 'INVALID_CURSOR', '分页位置无效。');
     const where = condition(sql, kind, params, query.q);
@@ -124,15 +129,21 @@ export function databasePublicList(
         keyset =
           cursor.sort === null
             ? sql`and j.deadline_at is null and j.id>${cursor.id}::uuid`
-            : sql`and (j.deadline_at>${cursor.sort}::timestamptz or (j.deadline_at=${cursor.sort}::timestamptz and j.id>${cursor.id}::uuid) or j.deadline_at is null)`;
+            : sql`and (j.deadline_at>${cursor.sort}::text::timestamptz or (j.deadline_at=${cursor.sort}::text::timestamptz and j.id>${cursor.id}::uuid) or j.deadline_at is null)`;
     } else if (kind === 'jobs') {
-      ordering = sql`j.published_at desc,j.id desc`;
+      // Keep timestamp strings as text parameters: postgres.js otherwise serializes
+      // timestamptz parameters through Date and loses sub-millisecond precision.
+      const publicationKey = sql`coalesce(j.published_at,j.published_date::timestamp at time zone 'UTC')`;
+      ordering = sql`${publicationKey} desc nulls last,j.id desc`;
       if (cursor)
-        keyset = sql`and (j.published_at,j.id)<(${cursor.sort}::timestamptz,${cursor.id}::uuid)`;
+        keyset =
+          cursor.sort === null
+            ? sql`and ${publicationKey} is null and j.id<${cursor.id}::uuid`
+            : sql`and ((${publicationKey},j.id)<(${cursor.sort}::text::timestamptz,${cursor.id}::uuid) or ${publicationKey} is null)`;
     } else if (kind === 'experiences') {
       ordering = sql`e.published_at desc,e.id desc`;
       if (cursor)
-        keyset = sql`and (e.published_at,e.id)<(${cursor.sort}::timestamptz,${cursor.id}::uuid)`;
+        keyset = sql`and (e.published_at,e.id)<(${cursor.sort}::text::timestamptz,${cursor.id}::uuid)`;
     } else if (kind === 'companies') {
       ordering = sql`c.id desc`;
       if (cursor) keyset = sql`and c.id<${cursor.id}::uuid`;
@@ -159,7 +170,7 @@ export function databasePublicList(
                   v: 1,
                   filter: query.filter,
                   id: last.id,
-                  sort: keyValue(kind, last, sort),
+                  sort: keyValue(kind, last, sort, records[data.length - 1]?.publication_sort_key),
                 }),
               ).toString('base64url')
             : null,

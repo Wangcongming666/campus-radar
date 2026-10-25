@@ -10,6 +10,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useLocalState } from '@/lib/use-local-state';
+import { WorkspaceSaveErrors } from '@/components/workspace-save-errors';
 export function useLocal<T>(key: string, initial: T, validate?: (value: unknown) => value is T) {
   return useLocalState(key, initial, validate);
 }
@@ -87,8 +88,9 @@ export function Modal({
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{description ?? '产品交互预览 · 使用虚构演示数据'}</DialogDescription>
+          <DialogDescription>{description ?? (process.env.NEXT_PUBLIC_DATA_MODE === 'api' ? '保存后同步到当前账户的数据库记录。' : '产品交互预览 · 使用虚构演示数据')}</DialogDescription>
         </DialogHeader>
+        <WorkspaceSaveErrors inline />
         {children}
       </DialogContent>
     </Dialog>
