@@ -1,0 +1,3 @@
+import { useState,useCallback } from "react";
+/** Device-only display preferences, never account/business records. */
+export function useLocalPreference<T>(key:string,initial:T):[T,(next:T|((old:T)=>T))=>void]{const storageKey=`campus:display:${key}`;const [value,setValue]=useState<T>(()=>{try{const raw=localStorage.getItem(storageKey);return raw?JSON.parse(raw) as T:initial;}catch{return initial;}});const update=useCallback((next:T|((old:T)=>T))=>{setValue(previous=>{const result=typeof next==="function"?(next as (old:T)=>T)(previous):next;try{localStorage.setItem(storageKey,JSON.stringify(result));}catch{/* display preference is optional */}return result;});},[storageKey]);return [value,update];}

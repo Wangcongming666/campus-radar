@@ -1,0 +1,105 @@
+.admin-review-sync {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 22px 24px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.admin-review-sync h2 {
+  font-size: 17px;
+  font-weight: 600;
+}
+.admin-review-sync h2 span {
+  color: var(--primary);
+  margin-left: 8px;
+  font-variant-numeric: tabular-nums;
+}
+.admin-review-sync p {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 6px;
+  line-height: 1.8;
+}
+.admin-review-sync .admin-review-sync-time {
+  font-size: 12px;
+}
+.admin-review-sync .admin-review-sync-error {
+  color: var(--red);
+}
+.admin-review-sync-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.admin-review-sync .button,
+.admin-moderation-filter .input {
+  min-height: 44px;
+}
+.admin-moderation-filter {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+}
+.admin-moderation-filter .field {
+  width: 260px;
+  max-width: 100%;
+}
+.admin-moderation-filter .input {
+  height: 44px;
+}
+.admin-moderation-filter > p {
+  font-size: 12px;
+  color: var(--muted);
+  padding-bottom: 9px;
+}
+.admin-review-kind {
+  color: var(--primary);
+  font-size: 12px;
+  margin-bottom: 7px;
+}
+@media (max-width: 1100px) {
+  .admin-review-sync {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 16px;
+  }
+}
+@media (max-width: 767px) {
+  .admin-review-sync {
+    padding: 20px;
+  }
+  .admin-review-sync-actions {
+    width: 100%;
+  }
+  .admin-review-sync-actions .button {
+    flex: 1;
+  }
+  .admin-moderation-filter {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .admin-moderation-filter .field {
+    width: 100%;
+  }
+  .admin-moderation-filter .input {
+    font-size: 16px;
+  }
+}
+
+.admin-comment-list .button,
+.admin-comment-removal .button {
+  min-height: 44px;
+}
+.admin-comment-removal .input {
+  font-size: 14px;
+}
+@media (max-width: 767px) {
+  .admin-comment-removal .input {
+    font-size: 16px;
+  }
+}

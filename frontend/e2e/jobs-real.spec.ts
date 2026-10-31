@@ -1,0 +1,62 @@
+import { test, expect } from "@playwright/test";
+import { randomUUID } from "node:crypto";
+import { api, createLiveAccount, ensureLiveCatalog } from "./helpers/live";
+
+test.skip(process.env.API_REAL_E2E !== "1", "Requires real API, local Mailpit and isolated MySQL");
+
+test("real job filters, profile match and saved/application state survive browser reload", async ({ browser }) => {
+  test.setTimeout(120000);
+  const context = await browser.newContext({ baseURL: process.env.PREVIEW_URL ?? "http://127.0.0.1:5179" });
+  try {
+    const catalog = await ensureLiveCatalog(context.request);
+    await createLiveAccount(context.request, "jobs-browser");
+    const profileResponse = await api(context.request, "/me");
+    expect(profileResponse.status()).toBe(200);
+    const profile = (await profileResponse.json()).data;
+    const update = await api(context.request, "/me", "PATCH", { version: profile.version, education: "BACHELOR", graduationYear: 2027, preferences: { roles: ["backend"], cities: ["验收城市"], recruitmentTypes: ["CAMPUS"], graduationYear: 2027 } });
+    expect(update.status()).toBe(200);
+    const page = await context.newPage();
+    page.setDefaultTimeout(15000);
+    const errors: string[] = [];
+    page.on("pageerror", error => errors.push(error.message));
+    await page.goto(`/jobs?companyId=${catalog.companyId}`);
+    await page.getByLabel("工作城市", { exact: true }).fill("验收城市");
+    await page.getByLabel("岗位方向", { exact: true }).fill("backend");
+    await page.getByLabel("招聘类型", { exact: true }).selectOption("CAMPUS");
+    await page.getByLabel("学历要求", { exact: true }).selectOption("BACHELOR");
+    await page.getByLabel("毕业届别", { exact: true }).fill("2027");
+    await page.getByLabel("招聘状态", { exact: true }).selectOption("OPEN");
+    await page.getByLabel("排序方式", { exact: true }).selectOption("DEADLINE");
+    const filtered = page.waitForResponse(response => response.url().includes("/api/v1/jobs?") && response.url().includes("graduationYear=2027"));
+    await page.getByRole("button", { name: "搜索", exact: true }).click();
+    const response = await filtered;
+    expect(response.status()).toBe(200);
+    const body = await response.json();
+    expect(body.data.map((job: { id: string }) => job.id)).toEqual([catalog.jobId]);
+    await expect(page.getByRole("link", { name: "联调测试岗位", exact: true })).toBeVisible();
+    await page.reload();
+    await expect(page.getByLabel("岗位方向", { exact: true })).toHaveValue("backend");
+    await page.getByRole("link", { name: "联调测试岗位", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "联调测试岗位", exact: true })).toBeVisible();
+    await expect(page.getByText("仅供联调的岗位描述", { exact: true })).toBeVisible();
+    await expect(page.getByText("正在招聘", { exact: true })).toBeVisible();
+    await expect(page.getByText("已知条件匹配度 100% · 信息覆盖率 100%", { exact: true })).toBeVisible();
+    await expect(page.getByText("仅按已填写的偏好和岗位条件比较，不代表录用概率。", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "收藏岗位", exact: true }).click();
+    await expect(page.getByRole("button", { name: "取消收藏", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "加入投递", exact: true }).click();
+    await expect(page.getByRole("button", { name: "已加入投递", exact: true })).toBeDisabled();
+    await page.reload();
+    await expect(page.getByRole("button", { name: "取消收藏", exact: true })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "已加入投递", exact: true })).toBeDisabled();
+    const favorites = await api(context.request, "/favorites?type=JOB");
+    expect(favorites.status()).toBe(200);
+    expect((await favorites.json()).data.some((favorite: { targetId: string }) => favorite.targetId === catalog.jobId)).toBe(true);
+    await page.getByRole("button", { name: "取消收藏", exact: true }).click();
+    await expect(page.getByRole("button", { name: "收藏岗位", exact: true })).toBeEnabled();
+    await page.goto(`/jobs?companyId=${catalog.companyId}&city=${encodeURIComponent(`不存在-${randomUUID()}`)}`);
+    await expect(page.getByText("暂无符合条件的岗位。", { exact: true })).toBeVisible();
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    expect(errors).toEqual([]);
+  } finally { await context.close(); }
+});

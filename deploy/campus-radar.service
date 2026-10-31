@@ -1,0 +1,30 @@
+[Unit]
+Description=Campus Radar API
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=campus-radar
+Group=campus-radar
+WorkingDirectory=/opt/campus-radar/current
+Environment=SPRING_PROFILES_ACTIVE=prod
+Environment=SPRING_CONFIG_ADDITIONAL_LOCATION=file:/opt/campus-radar/shared/config/application-prod.yml
+ExecStart=/usr/bin/java -Xms128m -Xmx384m -Xss512k -XX:MaxMetaspaceSize=192m -XX:ReservedCodeCacheSize=64m -XX:MaxDirectMemorySize=64m -XX:+ExitOnOutOfMemoryError -jar /opt/campus-radar/current/backend/app.jar
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=90
+SuccessExitStatus=143
+UMask=0077
+MemoryMax=768M
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/opt/campus-radar/shared/private-files
+
+[Install]
+WantedBy=multi-user.target

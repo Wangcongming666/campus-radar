@@ -1,21 +1,31 @@
+# Dependencies and generated frontend artifacts
 node_modules/
-.next/
 dist/
 coverage/
-.DS_Store
-*.local
-*.log
-.env
-.env.*
-!.env.example
-__pycache__/
-.pytest_cache/
-.venv/
 *.tsbuildinfo
 playwright-report/
 test-results/
-test-results-api/
-test-results-*/
-infrastructure/.pgvector-enable.lock/
+qa/
+
+# Local preferences, credentials and recoverable backups
+.DS_Store
+*.log
+*.local
+.env
+.env.*
+!.env.example
+*.env
+*.credentials.json
 .data/
-.next-*/
+
+# Java build output
+backend/target/
+__pycache__/
+
+# Local YAML credentials
+backend/src/main/resources/application-dev.yml
+infra/compose.yml
+backend/.idea/
+
+# Server-only native deployment credentials
+backend/config/application-prod.yml

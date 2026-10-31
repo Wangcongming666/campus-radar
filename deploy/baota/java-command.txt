@@ -1,0 +1,1 @@
+/usr/bin/java -Xms128m -Xmx384m -Xss512k -XX:MaxMetaspaceSize=192m -XX:ReservedCodeCacheSize=64m -XX:MaxDirectMemorySize=64m -XX:+ExitOnOutOfMemoryError -jar /www/server/campus-radar/backend/app.jar --spring.profiles.active=prod --spring.config.additional-location=file:/www/server/campus-radar/config/application-prod.yml

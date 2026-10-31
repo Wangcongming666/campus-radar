@@ -1,0 +1,66 @@
+name: campus-radar-prod
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    mem_limit: 768m
+    environment:
+      MYSQL_DATABASE: campus_radar_prod
+      MYSQL_USER: campus_app
+      MYSQL_PASSWORD: ${DB_PASSWORD:?Run configure.py init first}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?Run configure.py init first}
+    ports: ["127.0.0.1:33078:3306"]
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql.cnf:/etc/mysql/conf.d/campus.cnf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_ROOT_PASSWORD mysql --protocol=TCP -h127.0.0.1 -uroot -Nse 'SELECT 1' >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
+    logging: &logs
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    mem_limit: 128m
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Run configure.py init first}
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "64mb", "--maxmemory-policy", "noeviction", "--requirepass", "${REDIS_PASSWORD:?Run configure.py init first}"]
+    ports: ["127.0.0.1:36380:6379"]
+    volumes: ["redis_data:/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=$$REDIS_PASSWORD redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    logging: *logs
+  rabbitmq:
+    image: rabbitmq:4.4-alpine
+    hostname: campus-radar-mq
+    restart: unless-stopped
+    mem_limit: 384m
+    environment:
+      RABBITMQ_DEFAULT_USER: campus_prod
+      RABBITMQ_DEFAULT_PASS: ${RABBIT_PASSWORD:?Run configure.py init first}
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: "+S 2:2 +A 8"
+    ports: ["127.0.0.1:35674:5672"]
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+      - ./rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 30s
+    logging: *logs
+volumes:
+  mysql_data:
+    name: campus_radar_prod_mysql
+  redis_data:
+    name: campus_radar_prod_redis
+  rabbitmq_data:
+    name: campus_radar_prod_rabbitmq

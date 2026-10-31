@@ -1,0 +1,314 @@
+[
+  {
+    "route": "/",
+    "title": "落地页",
+    "access": "PUBLIC",
+    "phase": "P0",
+    "behavior": "Hero→实际统计→功能分区→产品预览位→Offer故事标识→FAQ；图片缺失时保留版式并标待补素材。",
+    "endpoints": "GET /public/stats"
+  },
+  {
+    "route": "/login",
+    "title": "登录",
+    "access": "PUBLIC",
+    "phase": "P0",
+    "behavior": "邮箱密码表单、错误、站内returnTo、忘记密码；成功更新会话并重取CSRF。",
+    "endpoints": "GET /auth/csrf; POST /auth/login"
+  },
+  {
+    "route": "/register",
+    "title": "注册",
+    "access": "PUBLIC",
+    "phase": "P0",
+    "behavior": "昵称邮箱密码、条款提示、验证邮件受理与重新发送入口。",
+    "endpoints": "POST /auth/register"
+  },
+  {
+    "route": "/forgot-password",
+    "title": "找回密码",
+    "access": "PUBLIC",
+    "phase": "P0",
+    "behavior": "提交邮箱，统一受理提示，不透露账号是否存在。",
+    "endpoints": "POST /auth/forgot-password"
+  },
+  {
+    "route": "/reset-password",
+    "title": "重置密码",
+    "access": "PUBLIC",
+    "phase": "P0",
+    "behavior": "从链接读取token但不发起GET写入；用户提交新密码后撤销旧会话。",
+    "endpoints": "POST /auth/reset-password"
+  },
+  {
+    "route": "/verify-email",
+    "title": "验证邮箱",
+    "access": "PUBLIC",
+    "phase": "P0",
+    "behavior": "展示链接状态，用户确认后POST消费单次token；失败提供重新发送。",
+    "endpoints": "POST /auth/verify-email"
+  },
+  {
+    "route": "/resend-verification",
+    "title": "重发验证",
+    "access": "PUBLIC",
+    "phase": "P0",
+    "behavior": "邮箱输入、受理、60秒按钮冷却及服务端限流提示。",
+    "endpoints": "POST /auth/resend-verification"
+  },
+  {
+    "route": "/onboarding",
+    "title": "四步引导",
+    "access": "USER",
+    "phase": "P0",
+    "behavior": "身份→简历可跳过→偏好→准备时间轴；逐步保存，返回不丢稿；P1接入简历及规则生成。",
+    "endpoints": "GET /me; PATCH /me; POST /planner/generate"
+  },
+  {
+    "route": "/jobs",
+    "title": "岗位广场",
+    "access": "PUBLIC",
+    "phase": "P0",
+    "behavior": "标题/总量/更新时间；240px筛选侧栏+列表；列表/卡片/表格；收藏、Drawer、加入待投。",
+    "endpoints": "GET /jobs; PUT /favorites/{type}/{id}; POST /applications"
+  },
+  {
+    "route": "/jobs/:id",
+    "title": "岗位详情",
+    "access": "PUBLIC",
+    "phase": "P0",
+    "behavior": "JD主栏+公司/条件侧栏；来源、日期精度、收藏、官方投递、关联面经；P1显示规则依据。",
+    "endpoints": "GET /jobs/{id}; GET /jobs/{id}/match; GET /experiences"
+  },
+  {
+    "route": "/company/:id",
+    "title": "公司详情",
+    "access": "PUBLIC",
+    "phase": "P0",
+    "behavior": "公司概览、标签页、岗位、相关知识；未知风格薪资显示来源不足。",
+    "endpoints": "GET /companies/{id}; GET /jobs; GET /salary/summary"
+  },
+  {
+    "route": "/subscriptions",
+    "title": "岗位订阅",
+    "access": "USER",
+    "phase": "P1",
+    "behavior": "订阅条件、启停、站内/邮件偏好、手动扫描、命中记录和任务进度。",
+    "endpoints": "GET /subscriptions; POST /subscriptions; PATCH /subscriptions/{id}; POST /subscriptions/{id}/scan; GET /subscriptions/{id}/hits"
+  },
+  {
+    "route": "/referral",
+    "title": "内推",
+    "access": "PUBLIC",
+    "phase": "P2",
+    "behavior": "公开有效内推列表+登录后申请/我的回执；认证提供者管理收到的申请。",
+    "endpoints": "GET /referrals; POST /referrals/{id}/requests; GET /referral-requests"
+  },
+  {
+    "route": "/pipeline",
+    "title": "投递看板",
+    "access": "USER",
+    "phase": "P0",
+    "behavior": "4张实际统计卡、8列横向看板、公司分组、卡片详情/笔记/历史、拖拽/菜单移动、归档恢复和撤销。",
+    "endpoints": "GET /applications/board; GET /applications; PATCH /applications/{id}; POST /applications/{id}/move; POST /applications/{id}/undo; GET /applications/{id}/history"
+  },
+  {
+    "route": "/calendar",
+    "title": "求职日程",
+    "access": "USER",
+    "phase": "P1",
+    "behavior": "月/周/列表视图、事件CRUD、关联轮次、时区、冲突提示、ICS导出。",
+    "endpoints": "GET /calendar/events; POST /calendar/events; PATCH /calendar/events/{id}; GET /calendar/export"
+  },
+  {
+    "route": "/analytics",
+    "title": "投递分析",
+    "access": "USER",
+    "phase": "P1",
+    "behavior": "时间范围、历史漏斗、阶段/日期分布、简历版本效果、样本/分母、客户端CSV。",
+    "endpoints": "GET /analytics"
+  },
+  {
+    "route": "/resumes",
+    "title": "简历库",
+    "access": "USER",
+    "phase": "P1",
+    "behavior": "上传/Canvas预览/文本、版本列表、默认版本、diff、下载、删除与投递关联。",
+    "endpoints": "POST /files; GET /resumes; POST /resumes; PATCH /resumes/{id}; GET /resumes/diff; GET /files/{id}/download"
+  },
+  {
+    "route": "/interview/:id/timeline",
+    "title": "面试时间线",
+    "access": "USER",
+    "phase": "P1",
+    "behavior": "id为投递ID；轮次列表、增加/编辑/删除、日程与复盘入口。",
+    "endpoints": "GET /applications/{id}/rounds; POST /applications/{id}/rounds; PATCH /rounds/{id}"
+  },
+  {
+    "route": "/interview/:id/review",
+    "title": "面试复盘",
+    "access": "USER",
+    "phase": "P1",
+    "behavior": "id仍是投递ID，?round=轮次ID；手动转写、录音回放、自评与笔记，空轮次给引导。",
+    "endpoints": "GET /applications/{id}/rounds; GET /rounds/{id}/review; PUT /rounds/{id}/review; POST /files"
+  },
+  {
+    "route": "/mock",
+    "title": "模拟面试",
+    "access": "USER",
+    "phase": "P1",
+    "behavior": "配置题库/时长、计时/暂停/恢复、逐题答题、自评、规则反馈、历史。",
+    "endpoints": "GET /mock-sessions; POST /mock-sessions; PATCH /mock-sessions/{id}; PUT /mock-sessions/{id}/answers/{answerId}"
+  },
+  {
+    "route": "/style/:companySlug",
+    "title": "公司面试风格",
+    "access": "PUBLIC",
+    "phase": "P1",
+    "behavior": "公司slug参数；样本量/时间窗、轮次分布、关键词/高频题，缺样本不画伪雷达。",
+    "endpoints": "GET /companies/by-slug/{companySlug}/style"
+  },
+  {
+    "route": "/experiences",
+    "title": "面经列表",
+    "access": "PUBLIC",
+    "phase": "P0",
+    "behavior": "筛选/搜索+内容流+热门公司辅助栏；收藏/预览；P1提供本人草稿编辑与提交审核。",
+    "endpoints": "GET /experiences; GET /me/experiences; POST /experiences; POST /experiences/{id}/submit"
+  },
+  {
+    "route": "/experiences/:id",
+    "title": "面经详情",
+    "access": "PUBLIC",
+    "phase": "P0",
+    "behavior": "目录/正文/重点摘录；来源模式/版权说明；P1评论、回复、收藏及举报。",
+    "endpoints": "GET /experiences/{id}; GET /experiences/{id}/comments; POST /experiences/{id}/comments; POST /reports"
+  },
+  {
+    "route": "/questions",
+    "title": "面试题库",
+    "access": "PUBLIC",
+    "phase": "P1",
+    "behavior": "方向/难度/公司筛选，?question=题目ID深链接，参考答案、练习、自评、错题和掌握度。",
+    "endpoints": "GET /questions; GET /questions/{id}; GET /questions/{id}/progress; PUT /questions/{id}/progress"
+  },
+  {
+    "route": "/handbook",
+    "title": "求职宝典",
+    "access": "PUBLIC",
+    "phase": "P0",
+    "behavior": "目录树+章节正文+可折叠私有笔记；?chapter=slug#section；完成进度、阅读导出。",
+    "endpoints": "GET /handbook/chapters; GET /handbook/chapters/{slug}; GET /handbook/progress/{id}; PUT /handbook/progress/{id}"
+  },
+  {
+    "route": "/pack/:companySlug",
+    "title": "公司面经包",
+    "access": "PUBLIC",
+    "phase": "P1",
+    "behavior": "公司slug参数；关联面经、题目、知识章节集合，提供内容跳转和各目标收藏。",
+    "endpoints": "GET /companies/by-slug/{companySlug}/pack"
+  },
+  {
+    "route": "/resume-check",
+    "title": "简历规则检查",
+    "access": "USER",
+    "phase": "P1",
+    "behavior": "选择本人简历、关联岗位、规则问题/证据/建议、文本导出；不编造改写经历。",
+    "endpoints": "GET /resumes; POST /resume-diagnoses"
+  },
+  {
+    "route": "/planner",
+    "title": "求职规划",
+    "access": "USER",
+    "phase": "P1",
+    "behavior": "时间轴/里程碑、任务看板、增改删、到期提醒；规则生成不覆盖手动任务。",
+    "endpoints": "GET /planner/tasks; POST /planner/tasks; PATCH /planner/tasks/{id}; POST /planner/generate"
+  },
+  {
+    "route": "/salary",
+    "title": "薪资参考",
+    "access": "PUBLIC",
+    "phase": "P1",
+    "behavior": "公司/岗位/城市/年份筛选、样本量、聚合图；用户匿名投稿经审核后纳入。",
+    "endpoints": "GET /salary/summary; POST /salary/reports"
+  },
+  {
+    "route": "/offer-compare",
+    "title": "Offer对比",
+    "access": "USER",
+    "phase": "P1",
+    "behavior": "多Offer编辑、明确现金年化、维度权重、缺失覆盖率、排序/说明及CSV导出。",
+    "endpoints": "GET /offers; POST /offers; PATCH /offers/{id}; GET /offer-comparison; PUT /offer-comparison"
+  },
+  {
+    "route": "/community",
+    "title": "社区动态",
+    "access": "PUBLIC",
+    "phase": "P2",
+    "behavior": "公共动态流、本人待审内容、发帖/评论/点赞/举报，服务端确认后反馈。",
+    "endpoints": "GET /posts; GET /me/posts; POST /posts; GET /posts/{id}/comments; PUT /posts/{id}/like; POST /reports"
+  },
+  {
+    "route": "/buddy",
+    "title": "同路人组队",
+    "access": "USER",
+    "phase": "P2",
+    "behavior": "自愿公开的同路人候选；公开/我的房间、邀请收件箱、入退组、成员与共享任务；10秒轮询可见房间，后台暂停。",
+    "endpoints": "GET /buddy/candidates; GET /buddy/rooms; POST /buddy/rooms; POST /buddy/rooms/{id}/join; GET /buddy/invitations; GET /buddy/rooms/{id}/tasks"
+  },
+  {
+    "route": "/radar",
+    "title": "公司情报雷达",
+    "access": "PUBLIC",
+    "phase": "P2",
+    "behavior": "7/30天时间窗、公司信号/分布、来源/置信度与详情；气泡大小按筛选后信号数，不称实时HC库存。",
+    "endpoints": "GET /radar/signals"
+  },
+  {
+    "route": "/me",
+    "title": "个人中心",
+    "access": "USER",
+    "phase": "P0",
+    "behavior": "头像/资料、实际统计、近期活动、收藏/简历/设置入口；显示由真实事件派生成就及规则。",
+    "endpoints": "GET /me; GET /me/overview"
+  },
+  {
+    "route": "/favorites",
+    "title": "我的收藏",
+    "access": "USER",
+    "phase": "P0",
+    "behavior": "岗位/公司/面经/题目分类、预览与取消、批量取消逐项反馈，目标失效有占位。",
+    "endpoints": "GET /favorites; DELETE /favorites/{type}/{id}"
+  },
+  {
+    "route": "/notifications",
+    "title": "通知中心",
+    "access": "USER",
+    "phase": "P1",
+    "behavior": "未读筛选、已读/未读、删除、全部已读；跳转目标先校验站内路径。",
+    "endpoints": "GET /notifications; PATCH /notifications/{id}; POST /notifications/read-all"
+  },
+  {
+    "route": "/settings",
+    "title": "设置",
+    "access": "USER",
+    "phase": "P0",
+    "behavior": "资料/主题/偏好；P1密码修改、导出、恢复预览、清空和注销；高风险写前重新验证。",
+    "endpoints": "PATCH /me; PUT /auth/password; POST /account/exports; POST /account/import-previews; POST /account/reset; DELETE /me"
+  },
+  {
+    "route": "/admin",
+    "title": "内容管理",
+    "access": "REVIEWER",
+    "phase": "P1",
+    "behavior": "审核队列、公共资料管理与举报；ADMIN可录入与编辑；普通用户无入口且API拒绝。",
+    "endpoints": "GET /admin/moderation; POST /admin/moderation/{type}/{id}/decisions; GET /admin/jobs; GET /admin/reports"
+  },
+  {
+    "route": "/admin/services",
+    "title": "服务管理",
+    "access": "ADMIN",
+    "phase": "P1",
+    "behavior": "依赖状态、积压、失败任务、显式重试、审计记录；不显示凭据或私有任务载荷。",
+    "endpoints": "GET /admin/services; GET /admin/tasks; POST /admin/tasks/{id}/retry; GET /admin/audit-logs"
+  }
+]

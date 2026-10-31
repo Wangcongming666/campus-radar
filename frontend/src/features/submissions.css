@@ -1,0 +1,244 @@
+.submission-page {
+  gap: 20px;
+}
+.submission-page .button {
+  min-height: 44px;
+}
+.submission-page .page-header {
+  margin-bottom: 0;
+}
+.submission-back,
+.submission-all {
+  font-size: 13px;
+  color: var(--primary);
+}
+.submission-toolbar {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 20px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.submission-toolbar .field {
+  min-width: 180px;
+  gap: 8px;
+}
+.submission-toolbar .input {
+  appearance: none;
+  -webkit-appearance: none;
+  min-height: 44px;
+  height: 44px;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+  padding: 10px 36px 10px 12px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2361718a' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+}
+[data-theme="dark"] .submission-toolbar .input {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238e9db9' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}
+.submission-toolbar > .button {
+  min-height: 44px;
+}
+.submission-all {
+  margin-left: auto;
+  padding-block: 11px;
+}
+.submission-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.submission-item {
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 24px;
+}
+.submission-item > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+.submission-item h2 {
+  font-size: 17px;
+  overflow-wrap: anywhere;
+}
+.submission-kind {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.submission-summary {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  line-height: 1.9;
+  margin-top: 16px;
+}
+.submission-status-note {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 12px;
+}
+.submission-item footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.submission-item time {
+  color: var(--muted);
+  font-size: 11px;
+}
+.submission-item footer > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.submission-empty {
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  padding: 36px 24px;
+  display: flex;
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 12px;
+}
+.submission-empty h2 {
+  font-size: 17px;
+}
+.submission-empty p {
+  font-size: 13px;
+  color: var(--muted);
+}
+.submission-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  font-size: 13px;
+}
+.submission-details {
+  margin-top: 16px;
+  font-size: 13px;
+}
+.submission-details summary {
+  cursor: pointer;
+  color: var(--primary);
+}
+.submission-details dl {
+  margin: 12px 0 0;
+  display: grid;
+  gap: 8px;
+}
+.submission-details dl > div {
+  display: grid;
+  grid-template-columns: 100px minmax(0, 1fr);
+  gap: 16px;
+}
+.submission-details dt {
+  color: var(--muted);
+}
+.submission-details dd {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 599px) {
+  .submission-toolbar {
+    padding: 16px;
+  }
+  .submission-toolbar .field {
+    flex: 1;
+    min-width: 130px;
+  }
+  .submission-toolbar .input {
+    font-size: 16px;
+  }
+  .submission-item {
+    padding: 18px;
+  }
+  .submission-item footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .submission-item footer > div {
+    width: 100%;
+  }
+  .submission-all {
+    margin-left: 0;
+  }
+  .submission-details dl > div {
+    grid-template-columns: 80px minmax(0, 1fr);
+    gap: 12px;
+  }
+}
+.submission-comment-content {
+  display: grid;
+  gap: 20px;
+  margin-top: 18px;
+}
+.submission-comment-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 15px;
+  line-height: 1.9;
+}
+.submission-reply-context {
+  padding: 14px 18px;
+  background: var(--canvas);
+  border-radius: 8px;
+}
+.submission-reply-context h3,
+.submission-post-context h3 {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+.submission-reply-context p,
+.submission-post-context p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.8;
+  font-size: 13px;
+}
+.submission-post-context {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+.submission-post-context > div {
+  min-width: 0;
+}
+.submission-post-context .button {
+  flex-shrink: 0;
+}
+@media (max-width: 767px) {
+  .submission-post-context {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 14px;
+  }
+}
+
+.submission-comment-withdrawal .button {
+  min-height: 44px;
+}

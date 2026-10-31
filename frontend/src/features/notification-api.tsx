@@ -1,0 +1,54 @@
+import { useEffect, useState, type ReactNode } from "react";
+import { Link } from "react-router-dom";
+import { safeReturnTo } from "../api/auth";
+import { allPersonal, personalData, type Schema } from "../api/personal";
+import { Badge, Button, Empty, Field, Modal, PageHeader, Panel } from "../components/ui";
+import { graduationYearError, subscriptionErrorMessage } from "./subscription-feedback";
+import "./extended.css";
+
+function useRemote<T>(load:()=>Promise<T>,deps:unknown[]=[]){const[data,setData]=useState<T|null>(null),[error,setError]=useState(""),[loading,setLoading]=useState(true),[tick,setTick]=useState(0);useEffect(()=>{let live=true;setLoading(true);setError("");load().then(d=>{if(live)setData(d);}).catch(e=>{if(live)setError(e.message);}).finally(()=>{if(live)setLoading(false);});return()=>{live=false;};},[...deps,tick]);return{data,error,loading,reload:()=>setTick(t=>t+1)};}
+function State({loading,error,children}:{loading:boolean;error:string;children?:ReactNode}){return <>{loading&&<p role="status">正在加载…</p>}{error&&<p role="alert">{error}</p>}{!loading&&!error&&children}</>;}
+function useMutation(reload:()=>void,formatError?:(error:unknown)=>string){const[busy,setBusy]=useState(false),[error,setError]=useState("");async function run(action:()=>Promise<unknown>,after?:()=>void){setBusy(true);setError("");try{await action();after?.();reload();}catch(e){setError(formatError?formatError(e):e instanceof Error?e.message:"操作失败，请重试。");}finally{setBusy(false);}}return{busy,error,run};}
+function Text({label,value,onChange,type="text",maxLength=200,required=false}:{label:string;value:string;onChange:(v:string)=>void;type?:string;maxLength?:number;required?:boolean}){return <Field label={label}><input className="input" type={type} value={value} onChange={e=>onChange(e.target.value)} maxLength={maxLength} required={required}/></Field>;}
+
+export function ApiNotificationsPage(){const[filter,setFilter]=useState("all");const remote=useRemote(()=>allPersonal<Schema<"Notification">>(`/notifications${filter==="all"?"":`?unread=${filter==="unread"}`}`),[filter]);const m=useMutation(remote.reload);return <div className="stack ext-page"><PageHeader title="通知中心" description="查看账号收到的真实通知，已读状态与删除会同步到账号。" actions={<Button disabled={m.busy||remote.loading} onClick={()=>void m.run(()=>personalData("/notifications/read-all","POST"))}>全部标为已读</Button>}/><Field label="通知范围"><select className="input" value={filter} onChange={e=>setFilter(e.target.value)}><option value="all">全部通知</option><option value="unread">未读通知</option><option value="read">已读通知</option></select></Field>{m.error&&<p role="alert">{m.error}</p>}<State {...remote}>{remote.data?.length===0&&<Empty title="这里暂时没有通知" description="订阅匹配等账号事件将在这里显示。"/>}{remote.data?.map(notification=>{const path=safeReturnTo(notification.targetPath,"");return <Panel key={notification.id}><div className="between"><h2>{notification.title}</h2><Badge tone={notification.readAt?"muted":"cyan"}>{notification.readAt?"已读":"未读"}</Badge></div><p style={{whiteSpace:"pre-wrap"}}>{notification.body}</p><p className="muted small">{new Date(notification.createdAt).toLocaleString("zh-CN")} · {notification.type}</p><div className="row">{path&&<Link className="button button-secondary" to={path}>查看相关内容</Link>}<Button disabled={m.busy} onClick={()=>void m.run(()=>personalData(`/notifications/${notification.id}`,"PATCH",{version:notification.version,read:!notification.readAt}))}>{notification.readAt?"标为未读":"标为已读"}</Button><Button disabled={m.busy} variant="danger" onClick={()=>void m.run(()=>personalData(`/notifications/${notification.id}?version=${notification.version}`,"DELETE"))}>删除通知</Button></div></Panel>;})}</State></div>;}
+
+export function ApiSubscriptionsPage(){const remote=useRemote(()=>allPersonal<Schema<"Subscription">>("/subscriptions"));const m=useMutation(remote.reload,subscriptionErrorMessage);const[editing,setEditing]=useState<Schema<"Subscription">|null|undefined>();const[task,setTask]=useState<Schema<"Task">|null>(null),[hits,setHits]=useState<Schema<"Subscription">|null>(null);async function scan(subscription:Schema<"Subscription">){const accepted=await personalData<Schema<"Task">>(`/subscriptions/${subscription.id}/scan`,"POST");setTask(accepted);}return <div className="stack ext-page"><PageHeader title="岗位订阅" description="按求职方向、城市、招聘类型与届别匹配。每次岗位版本只记录一次命中。" actions={<Button variant="primary" onClick={()=>setEditing(null)}>新增订阅</Button>}/>{m.error&&<p role="alert">{m.error}</p>}{task&&<ScanTask key={task.id} initial={task} done={remote.reload}/>}<State {...remote}>{remote.data?.length===0&&<Empty title="还没有岗位订阅" description="创建筛选条件后，运行匹配任务查看真实命中。"/>}{remote.data?.map(subscription=><Panel key={subscription.id}><div className="between"><h2>{subscription.name}</h2><Badge tone={subscription.enabled?"green":"muted"}>{subscription.enabled?"已启用":"已暂停"}</Badge></div><p>{subscription.conditions.roles.join("、")||"全部方向"} · {subscription.conditions.cities.join("、")||"全部城市"} · {subscription.conditions.recruitmentTypes.join("、")||"全部招聘类型"} · {subscription.conditions.graduationYear??"不限届别"}</p><p className="muted">{[subscription.inApp?"站内通知":"",subscription.email?"邮件通知":""].filter(Boolean).join(" + ")}</p><div className="row"><Button disabled={m.busy||!subscription.enabled} variant="primary" onClick={()=>void m.run(()=>scan(subscription))}>运行匹配任务</Button><Button onClick={()=>setHits(subscription)}>查看命中</Button><Button onClick={()=>setEditing(subscription)}>编辑条件</Button><Button disabled={m.busy} onClick={()=>void m.run(()=>personalData(`/subscriptions/${subscription.id}`,"PATCH",{version:subscription.version,enabled:!subscription.enabled}))}>{subscription.enabled?"暂停":"启用"}</Button><Button variant="danger" disabled={m.busy} onClick={()=>void m.run(()=>personalData(`/subscriptions/${subscription.id}?version=${subscription.version}`,"DELETE"))}>删除</Button></div></Panel>)}</State><Modal title={editing?"编辑订阅":"新增订阅"} open={editing!==undefined} onClose={()=>setEditing(undefined)}>{editing!==undefined&&<SubscriptionEditor key={editing?.id??"new"} value={editing} busy={m.busy} error={m.error} save={body=>void m.run(()=>personalData(editing?`/subscriptions/${editing.id}`:"/subscriptions",editing?"PATCH":"POST",editing?{...body,version:editing.version}:body),()=>setEditing(undefined))}/>}</Modal><Modal title={`命中记录 · ${hits?.name??""}`} open={hits!==null} onClose={()=>setHits(null)}>{hits&&<SubscriptionHits key={hits.id} id={hits.id}/>}</Modal></div>;}
+function SubscriptionEditor({value,busy,error,save}:{value:Schema<"Subscription">|null;busy:boolean;error:string;save:(b:Schema<"SubscriptionInput">)=>void}) {
+  const [name,setName]=useState(value?.name??""),
+    [roles,setRoles]=useState(value?.conditions.roles.join(",")??""),
+    [cities,setCities]=useState(value?.conditions.cities.join(",")??""),
+    [year,setYear]=useState(value?.conditions.graduationYear?.toString()??""),
+    [types,setTypes]=useState<Schema<"Preferences">["recruitmentTypes"]>(value?.conditions.recruitmentTypes??[]),
+    [inApp,setInApp]=useState(value?.inApp??true),
+    [email,setEmail]=useState(value?.email??false),
+    [enabled,setEnabled]=useState(value?.enabled??true);
+  const yearFeedback=graduationYearError(year);
+  function split(value:string) { return [...new Set(value.split(/[,，]/).map(x=>x.trim()).filter(Boolean))]; }
+  return <form className="stack" onSubmit={e=>{
+    e.preventDefault();
+    if(yearFeedback) return;
+    save({name,conditions:{roles:split(roles),cities:split(cities),recruitmentTypes:types,graduationYear:year?Number(year):null},inApp,email,enabled});
+  }}>
+    <Text label="订阅名称" value={name} onChange={setName} maxLength={80} required/>
+    <Text label="方向（逗号分隔，留空不限）" value={roles} onChange={setRoles}/>
+    <Text label="城市（逗号分隔，留空不限）" value={cities} onChange={setCities}/>
+    <Field label="毕业年份（留空不限）">
+      <input className="input" type="number" min={2000} max={2100} step={1} placeholder="例如 2027" value={year}
+        aria-invalid={Boolean(yearFeedback)} aria-describedby="subscription-year-feedback"
+        onChange={e=>{e.currentTarget.setCustomValidity("");setYear(e.target.value);}}
+        onInvalid={e=>e.currentTarget.setCustomValidity(yearFeedback)} />
+    </Field>
+    <p id="subscription-year-feedback" className="subscription-year-feedback" role={yearFeedback?"alert":undefined}>
+      {yearFeedback||"填写完整的四位毕业年份；不限毕业年份可留空。"}
+    </p>
+    <Field label="招聘类型（不选表示不限）"><div className="row">{(["CAMPUS","INTERNSHIP"] as const).map(type=><label className="row" key={type}><input type="checkbox" checked={types.includes(type)} onChange={e=>setTypes(p=>e.target.checked?[...p,type]:p.filter(x=>x!==type))}/>{type==="CAMPUS"?"校招":"实习"}</label>)}</div></Field>
+    <label className="row"><input type="checkbox" checked={inApp} onChange={e=>setInApp(e.target.checked)}/>站内通知</label>
+    <label className="row"><input type="checkbox" checked={email} onChange={e=>setEmail(e.target.checked)}/>邮件通知（需要可用邮件服务）</label>
+    <label className="row"><input type="checkbox" checked={enabled} onChange={e=>setEnabled(e.target.checked)}/>启用订阅</label>
+    {error&&<p role="alert">{error}</p>}
+    <Button type="submit" variant="primary" disabled={busy||(!inApp&&!email)}>保存订阅</Button>
+  </form>;
+}
+function SubscriptionHits({id}:{id:string}){const remote=useRemote(()=>allPersonal<Schema<"SubscriptionHit">>(`/subscriptions/${id}/hits`),[id]);return <State {...remote}>{remote.data?.length===0&&<Empty title="还没有命中记录" description="运行匹配任务，任务完成后再次打开此页。"/>}{remote.data?.map(hit=><div className="list-row" key={hit.id}><div><Link to={`/jobs/${hit.jobId}`}>查看命中岗位</Link><p className="muted small">岗位版本 {hit.jobVersion} · {new Date(hit.createdAt).toLocaleString("zh-CN")}</p></div><Badge>{hit.notificationId?"站内已通知":"已记录"}</Badge></div>)}</State>;}
+function ScanTask({initial,done}:{initial:Schema<"Task">;done:()=>void}){const[task,setTask]=useState(initial),[error,setError]=useState("");useEffect(()=>{let alive=true;let timer:ReturnType<typeof setTimeout>;let attempt=0;async function poll(){if(!alive)return;if(document.visibilityState==="hidden"){timer=setTimeout(poll,5000);return;}try{const next=await personalData<Schema<"Task">>(`/tasks/${initial.id}`);if(!alive)return;setTask(next);setError("");if(["SUCCEEDED","FAILED","CANCELLED"].includes(next.state)){if(next.state==="SUCCEEDED")done();return;}}catch(e){if(alive)setError(e instanceof Error?e.message:"无法读取任务状态。");}if(alive)timer=setTimeout(poll,attempt++<2?2000:attempt<5?5000:10000);}timer=setTimeout(poll,2000);return()=>{alive=false;clearTimeout(timer);};},[initial.id]);return <Panel title="订阅匹配任务"><p role="status">任务状态：{task.state} · 进度 {task.progress}%</p>{task.state==="SUCCEEDED"&&<p>匹配已完成，可查看订阅命中记录与通知中心。</p>}{task.state==="FAILED"&&<p role="alert">匹配失败：{task.errorCode??"请稍后重新运行任务。"}</p>}{error&&<p role="alert">{error}</p>}</Panel>;}

@@ -1,0 +1,454 @@
+.settings-page {
+  max-width: 1180px;
+}
+.settings-workspace {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 32px;
+  align-items: start;
+}
+.settings-sidebar {
+  position: sticky;
+  top: 24px;
+}
+.settings-sidebar nav {
+  display: grid;
+  gap: 6px;
+}
+.settings-sidebar nav button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 72px;
+  padding: 14px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  text-align: left;
+  background: transparent;
+  color: var(--muted);
+}
+.settings-sidebar nav button svg {
+  width: 19px;
+  height: 19px;
+  flex-shrink: 0;
+}
+.settings-sidebar nav button strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+}
+.settings-sidebar nav button small {
+  display: block;
+  font-size: 12px;
+  margin-top: 5px;
+  line-height: 1.5;
+}
+.settings-sidebar nav button:hover {
+  background: var(--raised);
+}
+.settings-sidebar nav button[aria-current] {
+  background: var(--surface);
+  border-color: var(--line);
+  color: var(--primary);
+}
+.settings-sidebar-note {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.8;
+  margin: 20px 14px 0;
+}
+.settings-content {
+  min-width: 0;
+  display: grid;
+  gap: 18px;
+}
+.settings-editor {
+  padding: 28px;
+}
+.settings-section-heading {
+  margin-bottom: 26px;
+}
+.settings-section-heading h2,
+.settings-session h2 {
+  font-size: 19px;
+  font-weight: 600;
+}
+.settings-section-heading p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.8;
+  margin-top: 8px;
+  max-width: 70ch;
+}
+.settings-fields {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+  display: grid;
+  gap: 24px;
+}
+.settings-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px 20px;
+}
+.settings-page .input,
+.settings-data-dialog .input {
+  height: 44px;
+  min-height: 44px;
+  font-size: 14px;
+  font-weight: 400;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.settings-page .field,
+.settings-data-dialog .field {
+  min-width: 0;
+  font-size: 14px;
+}
+.settings-page .field > small,
+.settings-data-dialog .field > small {
+  font-size: 12px;
+  line-height: 1.65;
+  font-weight: 400;
+}
+.settings-page .button,
+.settings-data-dialog .button {
+  min-height: 44px;
+  font-size: 14px;
+}
+.settings-page button:focus-visible,
+.settings-theme-options label:focus-within {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+.settings-form-footer {
+  border-top: 1px solid var(--line);
+  padding-top: 22px;
+  margin-top: 2px;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  align-items: center;
+}
+.settings-form-footer > span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.settings-form-footer .button {
+  min-width: 116px;
+}
+.settings-choice-group {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.settings-choice-group legend {
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 10px;
+}
+.settings-choice-group > p {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.8;
+  margin: 0 0 10px;
+}
+.settings-choices {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.settings-choices label {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.settings-page input[type="checkbox"],
+.settings-page input[type="radio"],
+.settings-data-dialog input[type="checkbox"] {
+  accent-color: var(--primary);
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+.settings-discovery {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+  cursor: pointer;
+}
+.settings-discovery > input {
+  margin-top: 3px;
+}
+.settings-discovery strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+}
+.settings-discovery small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.8;
+  margin-top: 6px;
+}
+.settings-theme-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.settings-theme-options label {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 70px;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  font-size: 13px;
+  cursor: pointer;
+}
+.settings-theme-options label.selected {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 5%, var(--surface));
+}
+.settings-theme-options svg {
+  width: 19px;
+  height: 19px;
+  flex-shrink: 0;
+}
+.settings-security,
+.settings-data {
+  display: grid;
+  gap: 20px;
+}
+.settings-session {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px 28px;
+}
+.settings-session p {
+  margin: 12px 0 5px;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.settings-session .muted {
+  font-size: 12px;
+}
+.settings-feedback {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.settings-feedback-error {
+  color: var(--red);
+  background: color-mix(in srgb, var(--red) 7%, var(--surface));
+}
+.settings-feedback-success {
+  color: var(--green);
+  background: color-mix(in srgb, var(--green) 7%, var(--surface));
+}
+.settings-data-actions > div {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22px 0;
+  border-bottom: 1px solid var(--line);
+}
+.settings-data-actions > div:first-child {
+  padding-top: 0;
+}
+.settings-data-actions > div:last-child {
+  padding-bottom: 0;
+  border: 0;
+}
+.settings-data-actions h3 {
+  font-size: 14px;
+  font-weight: 600;
+}
+.settings-data-actions p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.8;
+  margin-top: 6px;
+  max-width: 60ch;
+}
+.settings-data-actions .button {
+  flex-shrink: 0;
+}
+.settings-danger-zone {
+  padding: 26px 28px;
+}
+.settings-danger-zone .settings-section-heading h2 {
+  color: var(--red);
+}
+.settings-data-dialog {
+  font-size: 14px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+.settings-data-dialog > .muted {
+  font-size: 14px;
+}
+.settings-data-dialog .input[type="file"] {
+  height: auto;
+  min-height: 48px;
+  padding: 8px;
+}
+.settings-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  cursor: pointer;
+}
+.settings-data-note {
+  padding: 16px;
+  border-radius: 8px;
+  background: var(--canvas);
+  color: var(--muted);
+  font-size: 13px;
+}
+.settings-data-note p + p {
+  margin-top: 10px;
+}
+.settings-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.settings-backup-row {
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  padding: 12px 0;
+}
+.settings-backup-row > div {
+  min-width: 0;
+}
+.settings-backup-row strong {
+  overflow-wrap: anywhere;
+}
+.settings-backup-row .button {
+  flex-shrink: 0;
+}
+.settings-restore-preview {
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+.settings-task progress {
+  width: 100%;
+  height: 8px;
+  margin-top: 12px;
+  accent-color: var(--primary);
+}
+.settings-task > p {
+  margin-top: 10px;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 1050px) {
+  .settings-workspace {
+    grid-template-columns: 190px minmax(0, 1fr);
+    gap: 22px;
+  }
+  .settings-theme-options {
+    grid-template-columns: 1fr;
+  }
+  .settings-theme-options label {
+    min-height: 48px;
+  }
+}
+@media (max-width: 767px) {
+  .settings-workspace {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+  .settings-sidebar {
+    position: static;
+    min-width: 0;
+  }
+  .settings-sidebar nav {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 3px 3px 10px;
+  }
+  .settings-sidebar nav button {
+    min-height: 46px;
+    padding: 10px 12px;
+    flex-shrink: 0;
+    gap: 8px;
+  }
+  .settings-sidebar nav button small,
+  .settings-sidebar-note {
+    display: none;
+  }
+  .settings-sidebar nav button strong {
+    font-size: 14px;
+    white-space: nowrap;
+  }
+  .settings-form-grid {
+    grid-template-columns: 1fr;
+    gap: 22px;
+  }
+  .settings-editor,
+  .settings-danger-zone,
+  .settings-session {
+    padding: 20px;
+  }
+  .settings-page .input,
+  .settings-data-dialog .input {
+    font-size: 16px;
+  }
+  .settings-form-footer {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .settings-data-actions > div {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .settings-data-actions .button {
+    align-self: flex-start;
+  }
+  .settings-session {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .settings-theme-options {
+    grid-template-columns: 1fr;
+  }
+  .settings-dialog-footer .button {
+    flex: 1;
+  }
+}

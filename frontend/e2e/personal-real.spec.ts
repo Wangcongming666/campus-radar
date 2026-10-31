@@ -1,0 +1,233 @@
+import { test, expect, type BrowserContext, type APIRequestContext } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import { api, createLiveAccount, ensureLiveCatalog } from "./helpers/live";
+
+// This suite deliberately uses the running API, MySQL and worker. No route substitutes.
+test.skip(process.env.API_REAL_E2E !== "1", "Requires real API, MySQL, worker and local Mailpit");
+test.describe.configure({ mode: "serial" });
+const schemas = JSON.parse(readFileSync(new URL("../../docs/contracts/openapi.json", import.meta.url), "utf8")).components.schemas;
+type Value = Record<string, any>;
+function matches(schema: Value, value: any): boolean {
+  if (schema.$ref) return matches(schemas[schema.$ref.split("/").pop()], value);
+  if (schema.anyOf) return schema.anyOf.some((branch: Value) => matches(branch, value));
+  if (schema.type === "null") return value === null;
+  if (schema.type === "object") return value !== null && typeof value === "object" && !Array.isArray(value)
+    && (schema.required ?? []).every((key: string) => Object.hasOwn(value, key))
+    && Object.entries(value).every(([key, item]) => schema.properties[key] ? matches(schema.properties[key], item) : schema.additionalProperties !== false);
+  if (schema.type === "array") return Array.isArray(value) && value.length <= (schema.maxItems ?? Infinity) && value.every(item => matches(schema.items, item));
+  if (schema.type === "string") return typeof value === "string" && Array.from(value).length <= (schema.maxLength ?? Infinity) && Array.from(value).length >= (schema.minLength ?? 0)
+    && (!schema.enum || schema.enum.includes(value)) && (schema.format !== "date-time" || Number.isFinite(Date.parse(value)))
+    && (schema.format !== "uuid" || /^[\da-f]{8}(-[\da-f]{4}){3}-[\da-f]{12}$/i.test(value));
+  if (["integer", "number"].includes(schema.type)) return typeof value === "number" && Number.isFinite(value) && (schema.type !== "integer" || Number.isInteger(value)) && value >= (schema.minimum ?? -Infinity) && value <= (schema.maximum ?? Infinity);
+  return typeof value === schema.type;
+}
+function contract(name: string, value: any) {
+  const invalidFields = Object.entries(value ?? {}).filter(([key, item]) => !schemas[name].properties[key] || !matches(schemas[name].properties[key], item)).map(([key]) => key);
+  expect(matches(schemas[name], value), `${name} response must match checked-in OpenAPI; invalid fields: ${invalidFields.join(", ")}`).toBe(true);
+}
+async function data(request: APIRequestContext, path: string, method = "GET", body?: unknown, status = 200, key?: string): Promise<any> {
+  const response = await api(request, path, method, body, key ?? (method === "POST" ? crypto.randomUUID() : undefined));
+  expect(response.status(), `${method} ${path}`).toBe(status);
+  if (status === 204) return undefined;
+  const envelope = await response.json();
+  expect(status >= 400 ? envelope.error?.requestId : envelope.requestId).toBeTruthy();
+  return status >= 400 ? envelope.error : envelope.data;
+}
+let owner: BrowserContext, peer: BrowserContext, admin: BrowserContext, catalog: Value, ownerId: string, ownerEmail: string, peerId: string, applicationId: string;
+test.beforeAll(async ({ browser }) => {
+  test.setTimeout(120000);
+  const baseURL = process.env.PREVIEW_URL ?? "http://127.0.0.1:5179";
+  owner = await browser.newContext({ baseURL }); peer = await browser.newContext({ baseURL });
+  const account = await createLiveAccount(owner.request, "personal-owner"); ownerId = account.userId; ownerEmail = account.email;
+  peerId = (await createLiveAccount(peer.request, "personal-peer")).userId;
+  catalog = await ensureLiveCatalog(owner.request);
+  admin = await browser.newContext({ baseURL });
+  await data(admin.request, "/auth/login", "POST", { email: catalog.admin.email, password: catalog.admin.password });
+});
+test.afterAll(async () => { await owner?.close(); await peer?.close(); await admin?.close(); });
+
+test("planner persists browser edits, generated tasks replay, foreign owners and stale versions are rejected", async () => {
+  const page = await owner.newPage();
+  await page.goto("/planner");
+  await page.getByRole("button", { name: "新增任务", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("任务名称").fill("真实联调 · 保留手动任务");
+  await dialog.getByRole("button", { name: "保存任务" }).click();
+  await expect(page.getByRole("heading", { name: "真实联调 · 保留手动任务" })).toBeVisible();
+  let rows = await data(owner.request, "/planner/tasks"); rows.forEach((row: Value) => contract("PlanTask", row));
+  const task = rows.find((row: Value) => row.title === "真实联调 · 保留手动任务");
+  await data(peer.request, `/planner/tasks/${task.id}`, "PATCH", { version: task.version, status: "DONE" }, 404);
+  await data(owner.request, `/planner/tasks/${task.id}?version=0`, "DELETE", undefined, 422);
+  const changed = await data(owner.request, `/planner/tasks/${task.id}`, "PATCH", { version: task.version, status: "DOING" });
+  await data(owner.request, `/planner/tasks/${task.id}`, "PATCH", { version: task.version, status: "DONE" }, 409);
+  await data(owner.request, "/planner/tasks", "POST", { title: "invalid" }, 422);
+  const generate = { targetDate: "2027-06-01", hoursPerWeek: 8, roles: ["后端开发"] };
+  const key = crypto.randomUUID();
+  const first = await data(owner.request, "/planner/generate", "POST", generate, 200, key);
+  expect(await data(owner.request, "/planner/generate", "POST", generate, 200, key)).toEqual(first);
+  expect(await data(owner.request, "/planner/generate", "POST", generate)).toEqual(first);
+  rows = await data(owner.request, "/planner/tasks"); expect(rows).toHaveLength(4);
+  expect(rows.find((row: Value) => row.id === task.id).status).toBe("DOING");
+  await page.reload(); await expect(page.locator("section").filter({ has: page.getByRole("heading", { name: task.title }) }).getByLabel("状态")).toHaveValue("DOING");
+  await data(owner.request, `/planner/tasks/${changed.id}?version=${changed.version}`, "DELETE", undefined, 204);
+  await page.close();
+});
+
+test("calendar and rounds synchronize, reviews persist, conflicts export and offers honor ownership", async () => {
+  const jobs = await data(owner.request, "/jobs?page=1&size=100");
+  expect(jobs.length, "seeded published jobs").toBeGreaterThan(0);
+  const mutation = await data(owner.request, "/applications", "POST", { jobId: jobs[0].id }); applicationId = mutation.application.id;
+  const roundInput = { title: "真实联调技术面", roundType: "TECHNICAL", sequence: 1, mode: "ONLINE", status: "SCHEDULED", startsAt: "2027-03-01T02:00:00Z", endsAt: "2027-03-01T03:00:00Z", timezone: "Asia/Shanghai", location: null, meetingUrl: null };
+  await data(owner.request, `/applications/${applicationId}/rounds`, "POST", { ...roundInput, title: "" }, 422);
+  const round = await data(owner.request, `/applications/${applicationId}/rounds`, "POST", roundInput, 201); contract("InterviewRound", round);
+  await data(owner.request, `/applications/${applicationId}/rounds`, "POST", roundInput, 409);
+  await data(peer.request, `/applications/${applicationId}/rounds`, "GET", undefined, 404);
+  let events = await data(owner.request, "/calendar/events"); events.forEach((e: Value) => contract("CalendarEvent", e));
+  const event = events.find((e: Value) => e.roundId === round.id); expect(event.title).toBe(round.title);
+  const updated = await data(owner.request, `/calendar/events/${event.id}`, "PATCH", { version: event.version, title: "从日历改名", startsAt: "2027-03-02T02:00:00Z", endsAt: "2027-03-02T03:00:00Z" });
+  const rounds = await data(owner.request, `/applications/${applicationId}/rounds`); expect(rounds[0].title).toBe(updated.title); expect(rounds[0].version).toBe(2);
+  const overlap = await data(owner.request, "/calendar/events", "POST", { title: "时间冲突", applicationId: null, roundId: null, startsAt: updated.startsAt, endsAt: updated.endsAt, timezone: "Asia/Shanghai", kind: "PERSONAL", location: null, meetingUrl: null, notes: "", status: "SCHEDULED" }, 201);
+  expect(overlap.conflictIds).toContain(event.id);
+  const invalidRange = { version: updated.version, endsAt: updated.startsAt }; await data(owner.request, `/calendar/events/${event.id}`, "PATCH", invalidRange, 422);
+  const page = await owner.newPage(); await page.goto(`/interview/${applicationId}/review?round=${round.id}`);
+  await page.getByLabel("问题与回答记录").fill("说明缓存一致性与事务隔离。"); await page.getByLabel("收获与改进").fill("下次补充边界条件。");
+  await page.getByLabel("自评分（0–100，未知留空）").fill("85");
+  const reviewResponse = page.waitForResponse(response => response.url().endsWith(`/api/v1/rounds/${round.id}/review`) && response.request().method() === "PUT");
+  await page.getByRole("button", { name: "保存复盘" }).click();
+  expect((await reviewResponse).status()).toBe(200);
+  await expect.poll(async () => (await data(owner.request, `/rounds/${round.id}/review`)).notes).toBe("下次补充边界条件。");
+  await page.reload(); await expect(page.getByLabel("问题与回答记录")).toHaveValue("说明缓存一致性与事务隔离。");
+  const review = await data(owner.request, `/rounds/${round.id}/review`); contract("InterviewReview", review);
+  const unicodeReview = await data(owner.request, `/rounds/${round.id}/review`, "PUT", { version: review.version, transcript: review.transcript, notes: "🚀".repeat(20000), selfScore: 85, recordingFileId: null });
+  contract("InterviewReview", unicodeReview); expect(Array.from(unicodeReview.notes)).toHaveLength(20000);
+  await data(owner.request, `/rounds/${round.id}/review`, "PUT", { version: unicodeReview.version, transcript: "", notes: "", selfScore: null, recordingFileId: "1-1-1-1-1" }, 422);
+  await data(peer.request, `/rounds/${round.id}/review`, "GET", undefined, 404);
+  const ics = await api(owner.request, "/calendar/export?from=2027-03-01&to=2027-03-03"); expect(ics.headers()["content-type"]).toContain("text/calendar"); expect(await ics.text()).toContain("DTSTART:20270302T020000Z");
+  const offerBody = { applicationId, companyName: "联调企业", title: "研发工程师", city: "上海", baseMonthlyMinor: 2000000, salaryMonths: 14, bonusMinor: null, equityNote: "", benefits: "", expiresAt: null, status: "PENDING", scores: [{ dimension: "growth", score: 80 }] };
+  const a = await data(owner.request, "/offers", "POST", offerBody, 201); contract("Offer", a);
+  const b = await data(owner.request, "/offers", "POST", { ...offerBody, companyName: "联调企业二", baseMonthlyMinor: null }, 201);
+  await data(peer.request, `/offers/${a.id}`, "PATCH", { version: 1, title: "foreign" }, 404);
+  const comparison = await data(owner.request, "/offer-comparison", "PUT", { version: 0, offerIds: [a.id, b.id], weights: [{ dimension: "growth", weight: 1 }] }); contract("Comparison", comparison);
+  expect(comparison.results.find((r: Value) => r.offerId === a.id).annualCashMinor).toBeNull();
+  await page.goto("/offer-compare"); await expect(page.getByText("联调企业 · 研发工程师", { exact: false })).toBeVisible();
+  const today = new Date().toISOString().slice(0, 10);
+  const analytics = await data(owner.request, `/analytics?from=${today}&to=${today}`); contract("Analytics", analytics); expect(analytics.totalApplications).toBe(1); expect(analytics.appliedCount).toBe(0); expect(analytics.interviewRate).toBeNull();
+  const salaryRole = `个人薪资验收-${crypto.randomUUID().slice(0, 8)}`;
+  await page.goto("/salary"); await page.getByRole("combobox", { name: "公司", exact: true }).selectOption(catalog.companyId);
+  await page.getByLabel("方向", { exact: true }).fill(salaryRole); await page.getByLabel("城市", { exact: true }).fill("验收城市"); await page.getByLabel("年份", { exact: true }).fill("2027");
+  await page.getByLabel("月薪（元，未知留空）").fill("20000"); await page.getByLabel("薪资月数", { exact: true }).fill("14"); await page.getByLabel("年度奖金（元，未知留空）").fill("0"); await page.getByLabel("样本来源说明").fill("本地临时验收样本");
+  const salaryResponse = page.waitForResponse(response => response.url().endsWith("/api/v1/salary/reports") && response.request().method() === "POST");
+  await page.getByRole("button", { name: "提交审核", exact: true }).click(); const salaryHttp = await salaryResponse; expect(salaryHttp.status()).toBe(201);
+  const salary = (await salaryHttp.json()).data; contract("SalaryReport", salary); expect(salary.status).toBe("PENDING");
+  const salaryPath = `/salary/summary?companyId=${catalog.companyId}&role=${encodeURIComponent(salaryRole)}&year=2027`;
+  expect((await data(owner.request, salaryPath)).sampleSize).toBe(0);
+  await data(admin.request, `/admin/moderation/SALARY/${salary.id}/decisions`, "POST", { version: salary.version, decision: "APPROVE", reason: "本地薪资隐私阈值验收" });
+  const salarySummary = await data(owner.request, salaryPath); contract("SalarySummary", salarySummary); expect(salarySummary.sampleSize).toBe(1); expect(salarySummary.suppressed).toBe(true); expect(salarySummary.medianAnnualMinor).toBeNull();
+  await page.getByRole("button", { name: "查询样本", exact: true }).click(); await expect(page.getByText("2027 · 1 个完整薪资样本", { exact: true })).toBeVisible();
+  await data(owner.request, `/calendar/events/${event.id}?version=${updated.version}`, "DELETE", undefined, 204);
+  expect((await data(owner.request, `/applications/${applicationId}/rounds`))[0].startsAt).toBeNull();
+  await page.close();
+});
+
+test("community moderation boundaries and real room memberships keep per-user progress isolated", async () => {
+  test.setTimeout(120000);
+  const page = await owner.newPage(); await page.goto("/community");
+  await page.getByLabel("动态内容").fill("真实联调动态，仅供本地审核测试。"); await page.getByLabel("标签（逗号分隔，最多10个）").fill("联调");
+  const postResponse = page.waitForResponse(response => response.url().endsWith("/api/v1/posts") && response.request().method() === "POST");
+  await page.getByRole("button", { name: "提交审核", exact: true }).click();
+  expect((await postResponse).status()).toBe(201);
+  await expect(page.getByText("真实联调动态，仅供本地审核测试。", { exact: true })).toBeVisible();
+  const mine = await data(owner.request, "/me/posts"); const post = mine.find((p: Value) => p.bodyMd.includes("真实联调动态")); contract("Post", post); expect(post.status).toBe("PENDING");
+  expect((await data(peer.request, "/posts")).some((p: Value) => p.id === post.id)).toBe(false);
+  await data(peer.request, `/posts/${post.id}`, "PATCH", { version: post.version, bodyMd: "foreign" }, 404);
+  await data(owner.request, `/posts/${post.id}/like`, "PUT", undefined, 404);
+  await data(admin.request, `/admin/moderation/POST/${post.id}/decisions`, "POST", { version: post.version, decision: "APPROVE", reason: "本地联调发布测试" });
+  await data(peer.request, `/posts/${post.id}/like`, "PUT"); await data(peer.request, `/posts/${post.id}/like`, "PUT");
+  const published = (await data(peer.request, "/posts")).find((p: Value) => p.id === post.id); contract("Post", published); expect(published.likeCount).toBe(1); expect(published.likedByMe).toBe(true);
+  await data(peer.request, `/posts/${post.id}/like`, "DELETE", undefined, 204);
+  const comment = await data(peer.request, `/posts/${post.id}/comments`, "POST", { body: "真实联调评论", parentId: null }, 201); contract("Comment", comment); expect(comment.status).toBe("PENDING");
+  expect(await data(owner.request, `/posts/${post.id}/comments`)).toEqual([]);
+  await data(admin.request, `/admin/moderation/POST_COMMENT/${comment.id}/decisions`, "POST", { version: comment.version, decision: "APPROVE", reason: "本地联调评论发布" });
+  const publicComments = await data(owner.request, `/posts/${post.id}/comments`); publicComments.forEach((c: Value) => contract("Comment", c)); expect(publicComments[0].body).toBe(comment.body);
+  const report = await data(owner.request, "/reports", "POST", { targetType: "POST_COMMENT", targetId: comment.id, reason: "本地举报验收" }, 201); contract("Report", report);
+  await data(owner.request, `/posts/${post.id}/comments/${comment.id}?version=2`, "DELETE", undefined, 404);
+  await data(peer.request, `/posts/${post.id}/comments/${comment.id}?version=2`, "DELETE", undefined, 204);
+  expect(await data(owner.request, `/posts/${post.id}/comments`)).toEqual([]);
+  const me = await data(owner.request, "/me");
+  await data(admin.request, `/admin/users/${ownerId}/provider-certification`, "PUT", { version: me.version, verified: true, validUntil: new Date(Date.now() + 86400000).toISOString(), evidenceNote: "本地临时账号认证验收" });
+  const referral = await data(owner.request, "/referrals", "POST", { companyId: catalog.companyId, jobId: catalog.jobId, title: "真实联调内推", description: "临时验收资源", expiresAt: new Date(Date.now() + 3600000).toISOString() }, 201); contract("Referral", referral);
+  await data(admin.request, `/admin/moderation/REFERRAL/${referral.id}/decisions`, "POST", { version: referral.version, decision: "APPROVE", reason: "本地联调内推发布" });
+  await data(peer.request, `/referrals/${referral.id}/requests`, "POST", { message: "申请内推", consent: false }, 422);
+  const referralRequest = await data(peer.request, `/referrals/${referral.id}/requests`, "POST", { message: "真实联调内推申请", consent: true }, 201); contract("ReferralRequest", referralRequest);
+  expect((await data(admin.request, "/referral-requests")).some((item: Value) => item.id === referralRequest.id)).toBe(false);
+  await data(peer.request, `/referral-requests/${referralRequest.id}`, "PATCH", { version: referralRequest.version, status: "ACCEPTED" }, 403);
+  const accepted = await data(owner.request, `/referral-requests/${referralRequest.id}`, "PATCH", { version: referralRequest.version, status: "ACCEPTED", reply: "已收到" }); expect(accepted.reply).toBe("已收到");
+  await data(peer.request, `/referral-requests/${referralRequest.id}`, "PATCH", { version: accepted.version, status: "CANCELLED" }, 409);
+  const room = await data(owner.request, "/buddy/rooms", "POST", { name: "真实联调私密房间", description: "本地验收", visibility: "INVITE_ONLY", capacity: 2 }, 201); contract("BuddyRoom", room);
+  await data(peer.request, `/buddy/rooms/${room.id}/members`, "GET", undefined, 404);
+  await data(peer.request, `/buddy/rooms/${room.id}/join`, "POST", undefined, 403);
+  const invitation = await data(owner.request, `/buddy/rooms/${room.id}/invitations`, "POST", { inviteeId: peerId }, 201); contract("Invitation", invitation);
+  await data(peer.request, `/buddy/invitations/${invitation.id}`, "PATCH", { version: invitation.version, action: "ACCEPT" });
+  const members = await data(owner.request, `/buddy/rooms/${room.id}/members`); expect(members.map((m: Value) => m.userId).sort()).toEqual([ownerId, peerId].sort()); members.forEach((m: Value) => contract("RoomMember", m));
+  const task = await data(owner.request, `/buddy/rooms/${room.id}/tasks`, "POST", { title: "复习共享任务", questionId: null, dueAt: null }, 201); contract("RoomTask", task);
+  await data(peer.request, `/buddy/rooms/${room.id}/tasks/${task.id}/progress`, "PUT", { completed: true });
+  expect((await data(peer.request, `/buddy/rooms/${room.id}/tasks`))[0].completedByMe).toBe(true);
+  expect((await data(owner.request, `/buddy/rooms/${room.id}/tasks`))[0].completedByMe).toBe(false);
+  await data(peer.request, `/buddy/rooms/${room.id}/close`, "POST", { version: room.version }, 403);
+  await data(owner.request, `/buddy/rooms/${room.id}/leave`, "POST", undefined, 409);
+  await page.goto("/buddy"); await expect(page.getByText("真实联调私密房间", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "打开房间", exact: true }).click(); await expect(page.getByLabel("完成 复习共享任务")).not.toBeChecked();
+  await page.getByLabel("新共享任务", { exact: true }).fill("轮询后保留的未保存草稿");
+  const peerPage = await peer.newPage(); await peerPage.goto("/buddy"); await peerPage.getByRole("button", { name: "打开房间", exact: true }).click();
+  await data(owner.request, `/buddy/rooms/${room.id}/tasks`, "POST", { title: "跨用户新增任务", questionId: null, dueAt: null }, 201);
+  await expect(peerPage.getByLabel("完成 跨用户新增任务")).toBeVisible({ timeout: 18000 });
+  await expect(page.getByLabel("新共享任务", { exact: true })).toHaveValue("轮询后保留的未保存草稿");
+  await data(owner.request, `/buddy/rooms/${room.id}/close`, "POST", { version: room.version });
+  await expect(peerPage.getByRole("dialog").getByText("CLOSED", { exact: true })).toBeVisible({ timeout: 18000 });
+  await expect(peerPage.getByLabel("完成 跨用户新增任务")).toBeDisabled(); await peerPage.close();
+  await data(peer.request, `/buddy/rooms/${room.id}/tasks/${task.id}/progress`, "PUT", { completed: false }, 409);
+  await data(peer.request, `/buddy/rooms/${room.id}/leave`, "POST"); await data(owner.request, `/buddy/rooms/${room.id}/leave`, "POST");
+  await page.close();
+});
+
+test("subscriptions run asynchronous scans once per job version and practice saves, pauses and reports", async () => {
+  test.setTimeout(180000);
+  const subscription = await data(owner.request, "/subscriptions", "POST", { name: "真实匹配验收", conditions: { roles: [], cities: [], recruitmentTypes: [], graduationYear: null }, inApp: true, email: true, enabled: true }, 201); contract("Subscription", subscription);
+  const scanKey = crypto.randomUUID(); const task = await data(owner.request, `/subscriptions/${subscription.id}/scan`, "POST", undefined, 202, scanKey); contract("Task", task);
+  expect((await data(owner.request, `/subscriptions/${subscription.id}/scan`, "POST", undefined, 202, scanKey)).id).toBe(task.id);
+  await expect.poll(async () => (await data(owner.request, `/tasks/${task.id}`)).state, { timeout: 45000 }).toBe("SUCCEEDED");
+  const hits = await data(owner.request, `/subscriptions/${subscription.id}/hits`); expect(hits.length).toBeGreaterThan(0); hits.forEach((hit: Value) => contract("SubscriptionHit", hit));
+  await data(peer.request, `/subscriptions/${subscription.id}/hits`, "GET", undefined, 404); await data(peer.request, `/tasks/${task.id}`, "GET", undefined, 404);
+  const second = await data(owner.request, `/subscriptions/${subscription.id}/scan`, "POST", undefined, 202);
+  await expect.poll(async () => (await data(owner.request, `/tasks/${second.id}`)).state, { timeout: 45000 }).toBe("SUCCEEDED");
+  expect((await data(owner.request, `/subscriptions/${subscription.id}/hits`)).length).toBe(hits.length);
+  const notices = await data(owner.request, "/notifications"); notices.forEach((n: Value) => contract("Notification", n)); expect(notices.length).toBe(hits.length);
+  await expect.poll(async () => {
+    const response = await owner.request.get("http://127.0.0.1:38025/api/v1/messages?limit=100");
+    expect(response.status()).toBe(200);
+    return (await response.json()).messages.filter((message: Value) => message.Subject.includes("订阅命中") && message.To?.some((to: Value) => to.Address === ownerEmail)).length;
+  }, { timeout: 45000 }).toBe(hits.length);
+  const page = await owner.newPage(); await page.goto("/notifications"); await page.getByRole("button", { name: "全部标为已读" }).click();
+  await expect.poll(async () => (await data(owner.request, "/notifications?unread=true")).length).toBe(0);
+  await data(owner.request, `/subscriptions/${subscription.id}`, "PATCH", { version: subscription.version, enabled: false });
+  await data(owner.request, `/subscriptions/${subscription.id}/scan`, "POST", undefined, 409);
+  const questions = await data(owner.request, "/questions?page=1&size=100"); expect(questions.length, "seeded published questions").toBeGreaterThan(0);
+  await page.goto("/mock"); await page.getByLabel("练习方向", { exact: true }).selectOption(questions[0].role);
+  await page.getByLabel("时长（分钟）").fill("5"); await page.getByRole("checkbox").first().check(); await page.getByRole("button", { name: "开始练习（1 题）" }).click();
+  await expect(page.getByLabel("我的回答", { exact: true })).toBeVisible(); await page.getByLabel("我的回答", { exact: true }).fill("先给出结论，再解释原因，并补充一个具体例子。");
+  await page.getByLabel("自评分（可留空，0–100）").fill("82.5"); await page.getByRole("button", { name: "保存本题回答" }).click(); await expect(page.getByText("回答已保存。", { exact: true })).toBeVisible();
+  const sid = new URL(page.url()).searchParams.get("session")!; const session = await data(owner.request, `/mock-sessions/${sid}`); contract("MockSession", session);
+  await data(peer.request, `/mock-sessions/${sid}`, "GET", undefined, 404);
+  await page.getByRole("button", { name: "暂停计时" }).click(); await expect(page.getByRole("button", { name: "恢复计时" })).toBeVisible();
+  await data(owner.request, `/mock-sessions/${sid}/answers/${session.answers[0].id}`, "PUT", { version: 2, answerText: "paused", selfScore: 0 }, 409);
+  await page.getByRole("button", { name: "恢复计时" }).click(); await expect(page.getByRole("button", { name: "暂停计时" })).toBeVisible();
+  await page.getByRole("button", { name: "提交已保存的回答" }).click(); await expect(page.getByRole("heading", { name: "练习规则报告" })).toBeVisible();
+  const done = await data(owner.request, `/mock-sessions/${sid}`); contract("MockSession", done); expect(done.report.score).toBe(82.5); expect(done.state).toBe("COMPLETED");
+  await page.reload(); await expect(page.getByRole("heading", { name: "练习规则报告" })).toBeVisible();
+  await data(owner.request, `/mock-sessions/${sid}/answers/${session.answers[0].id}`, "PUT", { version: 2, answerText: "immutable", selfScore: 0 }, 409);
+  const unicodeSession = await data(owner.request, "/mock-sessions", "POST", { role: questions[0].role, questionIds: [questions[0].id], durationSeconds: 300 }, 201);
+  const unicodeAnswer = await data(owner.request, `/mock-sessions/${unicodeSession.id}/answers/${unicodeSession.answers[0].id}`, "PUT", { version: 1, answerText: "🚀".repeat(20000), selfScore: null });
+  contract("MockAnswer", unicodeAnswer); expect(Array.from(unicodeAnswer.answerText)).toHaveLength(20000);
+  await data(owner.request, `/mock-sessions/${unicodeSession.id}`, "PATCH", { version: 1, action: "SUBMIT" }, 200, crypto.randomUUID());
+  await page.close();
+});

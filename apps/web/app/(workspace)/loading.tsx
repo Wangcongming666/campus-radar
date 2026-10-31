@@ -1,1 +1,0 @@
-import {Skeleton} from '@/components/ui/skeleton';export default function Loading(){return <div className="grid gap-5"><Skeleton className="h-9 w-40"/><Skeleton className="h-20 w-full"/>{[1,2,3,4].map(v=><Skeleton key={v} className="h-36 w-full"/>)}</div>;}
